@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Large binary sample files (regenerable via ccm_extract.py)
+*.npz
+
+# Generated outputs (regenerable by running the models)
+output_data.json
+gw-models/gw_risk_adjusted.csv
+gw-models/summary_statistics.csv
+gw-models/histograms/
+aw-models/data/outputs/histograms/
+aw-models/data/outputs/ccm_extended_statistics.csv
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

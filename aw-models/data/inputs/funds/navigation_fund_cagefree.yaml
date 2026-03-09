@@ -1,0 +1,48 @@
+# Navigation Fund — Cage-Free Accountability Fund
+#
+# Source: "TNF - Summary of Grantmaking for RP - Future Cage-Free Spending"
+# (Jesse, Feb 2026) — shows how TNF would spend up to $33M in 2026.
+#
+# Regional breakdown of future cage-free spending:
+#   US (75% cage-free by 2030):    $20M
+#   EU (EU-wide ban on cages):     $10M
+#   UK (UK ban on cages):           $2M
+#   South Korea (national ban):     $1M
+#   Total:                         $33M
+#
+# 100% layer hens / chicken corporate campaigns.
+# TNF is collaborating with THL, Josh Balk and other key campaigning
+# groups on corporate and political strategies to end cages.
+#
+# From Jesse's RFMF doc:
+#   Current cage-free budget: ~$6.15M/yr (estimated from historical data)
+#   RFMF 2026: $20M additional
+#   RFMF 2027: $40M additional
+
+fund:
+  project_id: navigation_fund_cagefree
+  display_name: "Navigation Fund — Cage-Free Accountability"
+  annual_budget_M: 6.15
+  room_for_more_M: 33.0
+  source_year: 2026
+
+  splits:
+    chicken_corporate_campaigns: 1.00
+    fish_welfare: 0.00
+    shrimp_welfare: 0.00
+    invertebrate_welfare: 0.00
+    policy_advocacy_multi_species: 0.00
+    movement_building: 0.00
+    wild_animal_welfare: 0.00
+
+  # Diminishing returns from RFMF doc + future cage-free sheet:
+  # - Up to ~$16M (current + $10M): Ahold campaign + prep next target
+  # - $16M-$26M: expand to next US retailer + EU groundwork
+  # - $26M-$39M: full EU ($10M), UK ($2M), South Korea ($1M)
+  # - $39M+: geographic expansion model exhausted for 2026
+  diminishing_anchors:
+    - [3.0, 1.0]
+    - [6.0, 0.95]
+    - [16.0, 0.85]
+    - [26.0, 0.70]
+    - [39.0, 0.55]

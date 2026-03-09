@@ -1,0 +1,59 @@
+# Navigation Fund — General Farm Animal Grantmaking (excluding Cage-Free Fund)
+#
+# Source: "TNF - Summary of Grantmaking for RP - Future General Spending"
+# (Jesse, Feb 2026) — shows how TNF would spend $40M RFMF in 2026.
+#
+# See data/inputs/funds/TNF_README.md for full categorisation methodology.
+#
+# These are MARGINAL splits — how the next dollar would be allocated,
+# not how past dollars were spent. This is what we want for marginal CE.
+#
+# The future spending sheet explicitly lays out $40M across regions/areas.
+# Regional lines (EU, LatAm, Asia, Africa) were allocated using species
+# lists and area descriptions. See TNF_README.md for ratios.
+#
+# Note from Jesse: "You can assume a similar breakdown if our budget
+# increases further in 2027. As absorbency and tractability in Asia,
+# Latin America and Africa increase, we would expect to increase the
+# ratios in those regions by tapering increases in the US and EU."
+
+fund:
+  project_id: navigation_fund_general
+  display_name: "Navigation Fund — General Farm Animal"
+  annual_budget_M: 16.7
+  room_for_more_M: 40.0
+  source_year: 2026
+
+  # Marginal splits from future general spending sheet ($40M RFMF):
+  #   movement_building: $17.6M → 0.44
+  #     media & comms $6M, capacity $4M, meta-field $3.2M, fundraising $2M,
+  #     regional talent/innovation portions of LatAm/Asia/Africa
+  #   policy_advocacy: $8.9M → 0.22
+  #     US political $4M, plus policy portions of EU/LatAm/Asia/Africa
+  #   chicken_corporate_campaigns: $7.4M → 0.19
+  #     corporate campaign portions of EU/LatAm/Asia/Africa regional lines
+  #   fish_welfare: $2.7M → 0.07
+  #     aquatic line ($2M × 50%) + fish portions of regional lines
+  #   shrimp_welfare: $1.4M → 0.03
+  #     aquatic line ($2M × 50%) + EU shrimp portion
+  #   invertebrate_welfare: $1.0M → 0.025
+  #     insects & wild line ($2M × 50%)
+  #   wild_animal_welfare: $1.0M → 0.025
+  #     insects & wild line ($2M × 50%)
+  #   mammals: 0.0 (not yet included in splits)
+
+  splits:
+    movement_building: 0.44
+    policy_advocacy_multi_species: 0.22
+    chicken_corporate_campaigns: 0.19
+    fish_welfare: 0.07
+    shrimp_welfare: 0.03
+    invertebrate_welfare: 0.025
+    wild_animal_welfare: 0.025 
+
+  diminishing_anchors:
+    - [8.0, 1.0]
+    - [17.0, 0.95]
+    - [35.0, 0.85]
+    - [57.0, 0.65]
+    - [100.0, 0.45]

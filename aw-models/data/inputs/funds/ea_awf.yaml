@@ -1,0 +1,60 @@
+# EA Animal Welfare Fund — Estimated intervention splits
+#
+# Sources:
+#   - 2024 review: https://forum.effectivealtruism.org/posts/pZhqWRiq9ubaMSnqx
+#   - Apr-Oct 2024 payouts: https://forum.effectivealtruism.org/posts/dvPJZSK3bGooCi8CW
+#   - Oct-Dec 2024 payouts: https://forum.effectivealtruism.org/posts/w5rXxuvxnZBv4ehvF
+#
+# Methodology:
+#   Categorized each named grant from the two 2024 payout reports by intervention
+#   type. Totals: $2.44M (Apr-Oct) + $1.33M (Oct-Dec) = ~$3.77M across 51 grants.
+#   ~$488K was anonymous/private. Splits below are based on categorizable grants
+#   and the qualitative description in the 2024 review ("egg-laying hens largest,
+#   followed by multiple farmed animals, wild animals, and shrimps").
+#
+# Grant categorization (approximate $K from named grants):
+#   Chicken/bird welfare campaigns:  ~$1,340K  (cage-free corporate, accountability, legal)
+#     - Includes: OWA $200K, Fórum $100K+$218K(partner), cage-free groups across
+#       Africa/Asia/Europe, Legal Impact for Chickens $85K, etc.
+#   Fish/aquatic welfare:            ~$415K
+#     - Includes: Aquatic Life Institute $180K, fish stunning grants, Animal Law
+#       Italia $81K, salmon surveillance $60K, etc.
+#   Wild animal welfare:             ~$470K
+#     - Rethink Priorities wild animals $253K, Wild Animal Initiative $217K
+#   Policy advocacy (multi-species): ~$207K
+#     - Animal law/policy grants, Convergence Animaux Politique $91K, etc.
+#   Movement building / meta:        ~$375K
+#     - Hive $100K, Reporters for Animals $100K, conferences, press, students
+#   Shrimp welfare:                  ~$0 in 2024 (SWP was historically funded,
+#     $385K total pre-2024; noted as 4th most-funded species in review)
+#   Invertebrate welfare:            ~$0 explicitly, subsumed in fish/aquatic
+#   Alt proteins:                    ~$45K (Philippines)
+#
+# Splits rounded to match CCM intervention categories.
+# Shrimp gets a nonzero allocation based on the review's qualitative mention
+# and historical funding pattern.
+
+fund:
+  project_id: ea_awf
+  display_name: "EA Animal Welfare Fund"
+  annual_budget_M: 3.7
+  room_for_more_M: 6.3
+  source_year: 2024
+
+  splits:
+    chicken_corporate_campaigns: 0.35
+    fish_welfare: 0.12
+    shrimp_welfare: 0.05
+    invertebrate_welfare: 0.02
+    policy_advocacy_multi_species: 0.10
+    movement_building: 0.12
+    wild_animal_welfare: 0.14 
+    # ~10% unallocated / anonymous grants — distributed pro-rata across above
+
+  # Diminishing returns anchors: [cumulative $M, marginal CE multiplier]
+  # Placeholder — needs fund manager input
+  diminishing_anchors:
+    - [1.0, 1.0]
+    - [3.7, 0.95]
+    - [6.0, 0.85]
+    - [10.0, 0.70]

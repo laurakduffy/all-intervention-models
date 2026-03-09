@@ -1,0 +1,672 @@
+"""GCR (Global Catastrophic Risk) valuation model.
+
+Based on Tarsney's "Epistemic Challenge to Longtermism" (2020).
+Computes the expected value of interventions that reduce catastrophic risk,
+accounting for both near-term and long-term (including stellar expansion) value.
+
+Originally extracted from a Jupyter notebook implementation and parameterized for reuse.
+"""
+
+import itertools
+from tabnanny import verbose
+
+import numpy as np
+from dataclasses import dataclass, field
+
+M = 10**6
+B = 10**9
+
+
+@dataclass
+class GCRParams:
+    """All input parameters for the GCR valuation model.
+
+    Each array parameter has shape (n_sims,) — one value per scenario
+    (e.g. conservative / central / optimistic).
+    """
+
+    n_sims: int = 3
+    budget: float = 10 * M
+    periods_value: list = field(default_factory=lambda: [0, 5, 10, 20, 100, 500])
+
+    # Risk trajectory
+    cumulative_risk_100_yrs: np.ndarray = None
+    year_max_risk: np.ndarray = None
+    year_risk_1pct_max: np.ndarray = None
+    r_inf: np.ndarray = None
+    T_h: np.ndarray = None
+
+    # Intervention effect
+    year_effect_starts: np.ndarray = None
+    bp_reduction_per_bn: np.ndarray = None
+    persistence_effect: np.ndarray = None
+    # If set, overrides bp_reduction_per_bn: specifies the absolute peak
+    # annual risk reduction from the intervention (independent of baseline risk).
+    abs_risk_reduction: np.ndarray = None
+
+    # Growth parameters
+    initial_value: np.ndarray = None
+    rate_growth: np.ndarray = None
+    carrying_capacity: np.ndarray = None
+
+    # Cubic growth (stellar settlement)
+    cubic_growth: np.ndarray = None
+    T_c: np.ndarray = None
+    r_g: float = 1.3e5
+    s: np.ndarray = None
+    d_g: float = 2.2e-5
+    d_s: float = 2.9e-9
+
+
+class GCRModel:
+    """Runs the Tarsney-based GCR valuation model.
+
+    Usage:
+        params = GCRParams(...)
+        model = GCRModel(params)
+        results = model.run(verbose=True)
+    """
+
+    def __init__(self, params: GCRParams):
+        self.p = params
+        self._derive()
+
+    def _derive(self):
+        p = self.p
+        self.r_max = 1.38 * (1 - (1 - p.cumulative_risk_100_yrs) ** (1 / 100))
+        self.sd_risk = p.year_risk_1pct_max / 3
+        if p.abs_risk_reduction is not None:
+            self.rel_rr_from_int = p.abs_risk_reduction / self.r_max
+        else:
+            self.rel_rr_from_int = p.bp_reduction_per_bn * 0.0001 / B * p.budget
+
+        self.b2 = p.r_g * (p.d_g - p.d_s)
+        self.T_s = p.r_g / p.s
+
+        # v_s, a1, a2 computed during run() once earth value at T_c is known
+        self.v_s = None
+        self.a1 = None
+        self.a2 = None
+
+    # ── Risk trajectory ──
+
+    def get_annual_risk_level(self, t, I):
+        p = self.p
+        gaussian_no_int = self.r_max * np.exp(
+            -((t - p.year_max_risk) ** 2 / (2 * self.sd_risk**2))
+        )
+        r_t_no_int = p.r_inf + gaussian_no_int
+        if I == 1:
+            gaussian_int = self.r_max * (1 - self.rel_rr_from_int) * np.exp(
+                -((t - p.year_max_risk) ** 2 / (2 * self.sd_risk**2))
+            )
+            r_t_int = p.r_inf + gaussian_int
+            in_effect = (t >= p.year_effect_starts) & (
+                t <= p.persistence_effect + p.year_effect_starts
+            )
+            r_t = np.where(in_effect, r_t_int, r_t_no_int)
+        else:
+            r_t = r_t_no_int
+        return r_t
+
+    def get_p_survival_vec(self, risk_2d):
+        return np.cumprod(1 - risk_2d, axis=0)
+
+    # ── Convergence detection ──
+
+    def get_year_of_const_risk(self, I):
+        p = self.p
+        n = p.n_sims
+        result = np.full(n, 10000)
+        converged = np.zeros(n, dtype=bool)
+        start = int(np.max(p.year_max_risk)) + 1
+        for t in range(start, 10000):
+            r_t = self.get_annual_risk_level(t, I)
+            newly = (~converged) & (np.abs(r_t - p.r_inf) / p.r_inf < 0.01)
+            result[newly] = t
+            converged |= newly
+            if converged.all():
+                break
+        return result
+
+    def value_level_logistic(self, t):
+        p = self.p
+        return p.carrying_capacity / (
+            1
+            + (p.carrying_capacity - p.initial_value)
+            / p.initial_value
+            * np.exp(-p.rate_growth * t)
+        )
+
+    def get_year_logistic_ends(self):
+        p = self.p
+        n = p.n_sims
+        result = np.full(n, 10000)
+        converged = np.zeros(n, dtype=bool)
+        for t in range(0, 10000):
+            v_t = self.value_level_logistic(t)
+            newly = (~converged) & (np.abs(v_t) >= 0.99 * p.carrying_capacity)
+            result[newly] = t
+            converged |= newly
+            if converged.all():
+                break
+        return result
+
+    def get_year_const_value_and_risk(self, I):
+        yr = self.get_year_of_const_risk(I)
+        yl = self.get_year_logistic_ends()
+        return np.maximum(yr, yl)
+
+    # ── Value functions ──
+
+    def get_earth_value(self, t, y_const_value):
+        v_logistic = self.value_level_logistic(t)
+        v_const = 0.99 * self.p.carrying_capacity
+        return np.where(t < y_const_value, v_logistic, v_const)
+
+    def get_value_stars_settled(self, t):
+        p = self.p
+        in_mw = self.a1 * np.maximum(t - p.T_c, 0) ** 3
+        beyond_mw = self.a2 * np.maximum(t - p.T_c, 0) ** 3 + self.b2
+        v_stars = np.where(
+            p.cubic_growth & (t >= p.T_c),
+            np.where(t <= self.T_s, in_mw, beyond_mw),
+            0.0,
+        )
+        return v_stars
+
+    def get_total_value_level(self, t, y_const_value):
+        return self.get_earth_value(t, y_const_value) + self.get_value_stars_settled(t)
+
+    # ── Long-term value integrals ──
+
+    def get_conditional_future_value_on_earth(self, n_years):
+        p = self.p
+        v_const = 0.99 * p.carrying_capacity
+        return v_const / p.r_inf * (1 - np.exp(-p.r_inf * (p.T_h - n_years)))
+
+    def get_conditional_future_value_stars_to_Ts2(self):
+        p = self.p
+        return self.a1 / p.r_inf * (
+            6 / p.r_inf**3
+            - np.exp(-p.r_inf * (self.T_s - p.T_c))
+            * (
+                (self.T_s - p.T_c) ** 3
+                + 3 / p.r_inf * (self.T_s - p.T_c) ** 2
+                + 6 / p.r_inf**2 * (self.T_s - p.T_c)
+                + 6 / p.r_inf**3
+            )
+        )
+
+    def get_conditional_future_value_stars_to_Ts3(self, n_years):
+        p = self.p
+        return self.a1 / p.r_inf * (
+            np.exp(-p.r_inf * (n_years - p.T_c))
+            * (
+                (n_years - p.T_c) ** 3
+                + 3 / p.r_inf * (n_years - p.T_c) ** 2
+                + 6 / p.r_inf**2 * (n_years - p.T_c)
+                + 6 / p.r_inf**3
+            )
+            - np.exp(-p.r_inf * (self.T_s - p.T_c))
+            * (
+                (self.T_s - p.T_c) ** 3
+                + 3 / p.r_inf * (self.T_s - p.T_c) ** 2
+                + 6 / p.r_inf**2 * (self.T_s - p.T_c)
+                + 6 / p.r_inf**3
+            )
+        )
+
+    def get_conditional_future_value_stars_to_Th3(self):
+        p = self.p
+        return (
+            self.a2
+            / p.r_inf
+            * (
+                np.exp(-p.r_inf * (self.T_s - p.T_c))
+                * (
+                    (self.T_s - p.T_c) ** 3
+                    + 3 / p.r_inf * (self.T_s - p.T_c) ** 2
+                    + 6 / p.r_inf**2 * (self.T_s - p.T_c)
+                    + 6 / p.r_inf**3
+                )
+                - np.exp(-p.r_inf * (p.T_h - p.T_c))
+                * (
+                    (p.T_h - p.T_c) ** 3
+                    + 3 / p.r_inf * (p.T_h - p.T_c) ** 2
+                    + 6 / p.r_inf**2 * (p.T_h - p.T_c)
+                    + 6 / p.r_inf**3
+                )
+            )
+            + self.b2
+            / p.r_inf
+            * (
+                np.exp(-p.r_inf * (self.T_s - p.T_c))
+                - np.exp(-p.r_inf * (p.T_h - p.T_c))
+            )
+        )
+
+    # ── Main computation ──
+
+    def run(self, verbose=False):
+        p = self.p
+        n = p.n_sims
+
+        # Convergence years
+        y_const_value = self.get_year_const_value_and_risk(0)
+        y_const_1 = self.get_year_const_value_and_risk(1)
+        num_years_per_sim = np.maximum(
+            np.maximum(y_const_1, y_const_value), p.periods_value[-1]
+        ).astype(int)
+        max_num_years = int(np.max(num_years_per_sim))
+        years_arr = np.arange(max_num_years + 1)
+
+        if verbose:
+            print(f"num_years_per_sim = {num_years_per_sim}")
+            print(f"max_num_years = {max_num_years}")
+
+        # Stellar coefficients (need earth value at T_c)
+        self.v_s = np.array(
+            [
+                self.get_earth_value(int(p.T_c[i]), y_const_value)[i]
+                for i in range(n)
+            ]
+        )
+        self.a1 = 4 / 3 * np.pi * p.d_g * self.v_s * p.s**3
+        self.a2 = 4 / 3 * np.pi * p.d_s * self.v_s * p.s**3
+
+        # Risk arrays
+        r_array_1 = np.array(
+            [self.get_annual_risk_level(t, 1) for t in years_arr]
+        )
+        r_array_0 = np.array(
+            [self.get_annual_risk_level(t, 0) for t in years_arr]
+        )
+
+        # Survival arrays
+        survival_arr_1 = self.get_p_survival_vec(r_array_1)
+        survival_arr_0 = self.get_p_survival_vec(r_array_0)
+        diff_in_survival = survival_arr_1 - survival_arr_0
+
+        # Value array
+        value_array = np.array(
+            [
+                self.get_total_value_level(t, y_const_value)
+                for t in range(max_num_years)
+            ]
+        )
+
+        # Short-term intervention value by period
+        ev_short = {}
+        for i in range(len(p.periods_value) - 1):
+            lo = p.periods_value[i]
+            hi = p.periods_value[i + 1]
+            ev_i = np.sum(
+                value_array[lo:hi] * diff_in_survival[lo:hi], axis=0
+            )
+            ev_short[f"{lo} to {hi}"] = ev_i
+
+        last = p.periods_value[-1]
+        after_key = f"after {last}"
+        if np.any(num_years_per_sim > last):
+            time_idx = np.arange(last, max_num_years)[:, None]
+            mask = time_idx < num_years_per_sim[None, :]
+            contributions = (
+                value_array[last:max_num_years]
+                * diff_in_survival[last:max_num_years]
+            )
+            ev_short[after_key] = np.sum(contributions * mask, axis=0)
+
+        # Long-term value
+        sim_idx = np.arange(n)
+        diff_n = diff_in_survival[num_years_per_sim - 1, sim_idx]
+        cond_V_earth = self.get_conditional_future_value_on_earth(
+            num_years_per_sim
+        )
+
+        ev_no_cubic = diff_n * cond_V_earth
+
+        cV_Ts2 = self.get_conditional_future_value_stars_to_Ts2()
+        cV_Th3 = self.get_conditional_future_value_stars_to_Th3()
+        p_Tc2 = np.exp(-p.r_inf * (p.T_c - num_years_per_sim))
+        ev_cubic_late = diff_n * (cond_V_earth + p_Tc2 * (cV_Ts2 + cV_Th3))
+
+        cV_Ts3 = self.get_conditional_future_value_stars_to_Ts3(
+            num_years_per_sim
+        )
+        exp_adj = np.exp(-p.r_inf * (p.T_c - num_years_per_sim))
+        ev_cubic_early = diff_n * (
+            cond_V_earth + exp_adj * (cV_Ts3 + cV_Th3)
+        )
+
+        ev_cubic = np.where(
+            p.T_c > num_years_per_sim, ev_cubic_late, ev_cubic_early
+        )
+        ev_long = np.where(p.cubic_growth, ev_cubic, ev_no_cubic)
+
+        # Assemble results
+        ev_dict = dict(ev_short)
+        if after_key in ev_short:
+            ev_dict[f"Expected Value after {last}"] = (
+                ev_short[after_key] + ev_long
+            )
+
+        total = np.zeros(n)
+        for i in range(len(p.periods_value) - 1):
+            lo, hi = p.periods_value[i], p.periods_value[i + 1]
+            total += ev_dict[f"{lo} to {hi}"]
+        if after_key in ev_short:
+            total += ev_short[after_key]
+        total += ev_long
+        ev_dict["Total Value"] = total
+
+        ev_dict_per_M = {}
+        for k, v in ev_dict.items():
+            ev_dict_per_M[k + " per $1M"] = v / p.budget * 1e6
+
+        if verbose:
+            print("\n=== Intervention EV (per sim), by period ===")
+            for k, v in ev_dict.items():
+                print(f"  {k}: {v}")
+            print("\n=== QALYs Per $1M (per sim), by period ===")
+            for k, v in ev_dict_per_M.items():
+                print(f"  {k}: {v}")
+
+        return {
+            "ev_by_period": ev_dict,
+            "ev_per_M_by_period": ev_dict_per_M,
+            "num_years_per_sim": num_years_per_sim,
+            "max_num_years": max_num_years,
+            "diff_in_survival": diff_in_survival,
+            "value_array": value_array,
+            "y_const_value": y_const_value,
+        }
+
+
+def ev_sub_extinction_tier(
+    p_event_annual,
+    expected_deaths,
+    rel_risk_reduction,
+    persistence_years,
+    counterfactual_factor,
+    dalys_per_death=1,
+):
+    """Simple expected-value model for recoverable catastrophes (sub-extinction).
+
+    For events where civilization recovers, the full Tarsney framework (permanent
+    loss of future value) doesn't apply. Instead we compute direct expected
+    deaths averted.
+
+    Args:
+        p_event_annual: Annual probability of the catastrophe occurring.
+        expected_deaths: Expected deaths conditional on the event.
+        rel_risk_reduction: Fractional reduction in event probability (0 to 1).
+        persistence_years: How many years the risk reduction persists.
+        counterfactual_factor: Fraction of impact that is counterfactual (0 to 1).
+        dalys_per_death: DALYs per statistical death (default 1 = lives-equivalent).
+
+    Returns:
+        Total expected deaths averted (× dalys_per_death) over the persistence period.
+    """
+    annual_deaths_averted = (
+        p_event_annual
+        * expected_deaths
+        * rel_risk_reduction
+        * counterfactual_factor
+    )
+    return annual_deaths_averted * persistence_years * dalys_per_death
+
+
+# Constants for run_monte_carlo
+_BOOL_PARAMS = {"cubic_growth"}
+_SCALAR_PARAMS = {"budget", "r_g", "d_g", "d_s"}
+
+
+def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, p_harm=0.0, p_zero=0.0, harm_multiplier=1.0):
+    """Run the GCR model with Monte Carlo sampling and stratified harm assignment.
+    
+    Args:
+        sweep_params: dict mapping parameter names to lists of values.
+        fixed_params: dict mapping parameter names to single values held constant.
+        n_samples: Number of Monte Carlo samples.
+        verbose: Print progress and summary statistics.
+        p_harm: Probability that intervention causes harm instead of benefit.
+        p_zero: Probability that intervention has zero effect (default: 0.0).
+        harm_multiplier: If harm occurs, multiply effect by this factor (default: 1.0).
+                        E.g., harm_multiplier=2.0 means harm is 2x the magnitude of benefit
+    
+    Returns:
+        dict with:
+            total_values: np.ndarray of total EV per sample
+            samples: list of dicts (one per sample, scalar param values)
+            percentiles: dict with p1/p5/p10/p25/p50/p75/p90/p95/p99/mean
+            ev_per_period: dict of {period_name: np.ndarray} across all samples
+    
+    Note: p_positive = 1 - p_zero - p_harm. If p_zero + p_harm > 1, raises ValueError.
+    """
+    if p_zero + p_harm > 1.0:
+        raise ValueError(f"p_zero ({p_zero}) + p_harm ({p_harm}) must be ≤ 1.0")
+    
+    if verbose:
+        print(f"Monte Carlo: {n_samples:,} samples (stratified)")
+    
+    # For stratification, identify key parameters that affect time period weighting
+    # Stratify by parameters that strongly affect time period distributions
+    # (especially t4 vs t5 magnitudes)
+    stratify_keys = []
+    for key in ['cubic_growth', 'T_c', 'r_inf']:
+        if key in sweep_params:
+            stratify_keys.append(key)
+    
+    if stratify_keys:
+        # Build strata from key parameters
+        import itertools
+        strata_values = [sweep_params[k] for k in stratify_keys]
+        strata_combos = list(itertools.product(*strata_values))
+        n_strata = len(strata_combos)
+        samples_per_stratum = n_samples // n_strata
+        remainder = n_samples % n_strata
+        
+        if verbose:
+            print(f"Stratifying by: {', '.join(stratify_keys)} ({n_strata} strata)")
+    else:
+        # No stratification possible, fall back to simple sampling
+        strata_combos = [None]
+        n_strata = 1
+        samples_per_stratum = n_samples
+        remainder = 0
+    
+    # Sample parameters - stratified where applicable
+    param_samples = {key: [] for key in sweep_params.keys()}
+    effect_assignments = []  # 0=zero, 1=positive, 2=harm
+    
+    for stratum_idx, stratum in enumerate(strata_combos):
+        n_in_stratum = samples_per_stratum + (1 if stratum_idx < remainder else 0)
+        
+        # Sample from non-stratified parameters
+        for key, values in sweep_params.items():
+            if key in stratify_keys and stratum is not None:
+                # Use fixed value from stratum
+                param_idx = stratify_keys.index(key)
+                param_samples[key].extend([stratum[param_idx]] * n_in_stratum)
+            else:
+                # Random sampling
+                sampled = np.random.choice(values, size=n_in_stratum)
+                param_samples[key].extend(sampled)
+        
+        # Stratified effect assignment within this stratum
+        # Three categories: positive (1-p_zero-p_harm), zero (p_zero), harm (p_harm)
+        p_positive = 1.0 - p_zero - p_harm
+        
+        # Probabilistic rounding for exact proportions
+        n_positive_expected = n_in_stratum * p_positive
+        n_zero_expected = n_in_stratum * p_zero
+        n_harm_expected = n_in_stratum * p_harm
+        
+        n_positive = int(n_positive_expected)
+        n_zero = int(n_zero_expected)
+        n_harm = int(n_harm_expected)
+        
+        # Handle rounding to ensure we get exactly n_in_stratum samples
+        remainder_positive = n_positive_expected - n_positive
+        remainder_zero = n_zero_expected - n_zero
+        remainder_harm = n_harm_expected - n_harm
+        
+        # Probabilistically allocate remaining samples
+        rand_val = np.random.random()
+        if rand_val < remainder_positive:
+            n_positive += 1
+        elif rand_val < remainder_positive + remainder_zero:
+            n_zero += 1
+        else:
+            n_harm += 1
+        
+        # Adjust if we're over/under (shouldn't happen often)
+        total = n_positive + n_zero + n_harm
+        if total < n_in_stratum:
+            n_positive += (n_in_stratum - total)
+        elif total > n_in_stratum:
+            if n_positive > 0:
+                n_positive -= (total - n_in_stratum)
+            elif n_zero > 0:
+                n_zero -= (total - n_in_stratum)
+            else:
+                n_harm -= (total - n_in_stratum)
+        
+        # Create effect assignments: 0=zero, 1=positive, 2=harm
+        stratum_effects = np.array(
+            [0] * n_zero + [1] * n_positive + [2] * n_harm,
+            dtype=np.int8
+        )
+        np.random.shuffle(stratum_effects)
+        effect_assignments.extend(stratum_effects)
+    
+    # Convert to arrays
+    for key in param_samples:
+        param_samples[key] = np.array(param_samples[key])
+        if key in _BOOL_PARAMS:
+            param_samples[key] = param_samples[key].astype(bool)
+    
+    effect_assignments = np.array(effect_assignments, dtype=np.int8)  # 0=zero, 1=positive, 2=harm
+    actual_n_samples = len(effect_assignments)
+    
+    # Add fixed parameters
+    for key, val in fixed_params.items():
+        if key in _SCALAR_PARAMS or key == "periods_value":
+            continue
+        if key == "carrying_capacity_multiplier":
+            continue
+        if key in param_samples:
+            continue
+        dtype = bool if key in _BOOL_PARAMS else float
+        param_samples[key] = np.full(actual_n_samples, val, dtype=dtype)
+    
+    # Handle carrying capacity
+    if "carrying_capacity" not in param_samples:
+        if "carrying_capacity_multiplier" in param_samples:
+            mult = param_samples.pop("carrying_capacity_multiplier")
+        elif "carrying_capacity_multiplier" in fixed_params:
+            mult = np.full(actual_n_samples, fixed_params["carrying_capacity_multiplier"])
+        else:
+            mult = np.full(actual_n_samples, 2.0)
+        param_samples["carrying_capacity"] = mult * param_samples["initial_value"]
+    
+    # Build GCRParams
+    scalar_kwargs = {k: fixed_params[k] for k in _SCALAR_PARAMS if k in fixed_params}
+    params = GCRParams(
+        n_sims=actual_n_samples,
+        periods_value=fixed_params.get("periods_value", [0, 5, 10, 20, 100, 500]),
+        **scalar_kwargs,
+        **param_samples,
+    )
+    
+    # Run model
+    model = GCRModel(params)
+    results = model.run()
+    
+    # Apply stratified effects: zero, positive, or harm
+    if p_zero > 0 or p_harm > 0:
+        zero_mask = (effect_assignments == 0)
+        positive_mask = (effect_assignments == 1)
+        harm_mask = (effect_assignments == 2)
+        
+        for k, v in results["ev_by_period"].items():
+            # Start with original values
+            v_adjusted = v.copy()
+            
+            # Zero effect: set to 0
+            if p_zero > 0:
+                v_adjusted = np.where(zero_mask, 0.0, v_adjusted)
+            
+            # Harm: negate and multiply by harm_multiplier
+            if p_harm > 0:
+                v_adjusted = np.where(harm_mask, -v * harm_multiplier, v_adjusted)
+            
+            results["ev_by_period"][k] = v_adjusted
+
+    # Compute statistics
+    total_values = results["ev_by_period"]["Total Value"]
+    pct_list = [1, 5, 10, 25, 50, 75, 90, 95, 99]
+    pct_values = np.percentile(total_values, pct_list)
+    percentiles = {f"p{p}": float(v) for p, v in zip(pct_list, pct_values)}
+    percentiles["mean"] = float(np.mean(total_values))
+    
+    if verbose:
+        print(f"\nDistribution across {actual_n_samples:,} samples:")
+        for k, v in percentiles.items():
+            print(f"  {k}: {v:.4e}")
+        
+        n_zero = np.sum(total_values == 0)
+        n_pos = np.sum(total_values > 0)
+        n_neg = np.sum(total_values < 0)
+        
+        if p_zero > 0 or p_harm > 0:
+            print(f"  ({n_pos:,} pos = {100*n_pos/actual_n_samples:.1f}%, "
+                  f"{n_zero:,} zero = {100*n_zero/actual_n_samples:.1f}%, "
+                  f"{n_neg:,} harm = {100*n_neg/actual_n_samples:.1f}%)")
+        else:
+            print(f"  ({n_pos:,} pos, {n_neg:,} neg)")
+            
+    # Build sample list for inspection
+    samples = []
+    for i in range(actual_n_samples):
+        sample = {k: v[i] for k, v in param_samples.items()}
+        samples.append(sample)
+    
+    return {
+        "total_values": total_values,
+        "samples": samples,
+        "percentiles": percentiles,
+        "ev_per_period": results["ev_by_period"],
+    }
+
+def make_original_notebook_params():
+    """Factory: returns GCRParams matching the original notebook defaults.
+
+    Useful for validation — running these through GCRModel should reproduce
+    the known outputs from the original implementation.
+    """
+    initial_value = np.array([8e9, 2e9, 5e10])
+    return GCRParams(
+        n_sims=3,
+        budget=10 * M,
+        periods_value=[0, 5, 10, 20, 100, 500],
+        cumulative_risk_100_yrs=np.array([0.1, 0.05, 0.25]),
+        year_max_risk=np.array([15, 10, 5]),
+        year_risk_1pct_max=np.array([300, 200, 300]),
+        r_inf=np.array([1e-7, 1e-5, 1e-10]),
+        T_h=np.array([1e14] * 3),
+        year_effect_starts=np.array([0, 3, 2]),
+        bp_reduction_per_bn=np.array([1, -1, 10]),
+        persistence_effect=np.array([20, 10, 30]),
+        initial_value=initial_value,
+        rate_growth=np.array([0.01, 0.005, 0.02]),
+        carrying_capacity=np.array([2, 1.5, 5]) * initial_value,
+        cubic_growth=np.array([False, True, True]),
+        T_c=np.array([300, 1000, 600]),
+        s=np.array([0.01, 0.001, 0.1]),
+    )
+
+
+
+# Grid sweep removed - use run_monte_carlo for sampling
