@@ -179,7 +179,7 @@ shrimp_sludge_dalys_suffering_per_shrimp_conventional = shrimp_sludge_hrs_suffer
 shrimp_sludge_percent_suffering_reduced = sample_beta(4, 4)
 shrimp_sludge_dalys_reduced_per_dollar = shrimp_per_dollar_sludge * shrimp_sludge_dalys_suffering_per_shrimp_conventional * shrimp_sludge_percent_suffering_reduced
 
-shrimp_density_hrs_suffering_per_shrimp_conventional = sample_lognorm_ci(50, 150, lclip=10, rclip=1000, credibility=90) # mean around 50 hours
+shrimp_density_hrs_suffering_per_shrimp_conventional = sample_lognorm_ci(50, 150, lclip=10, rclip=1000, credibility=90) # mean around 90 hours
 shrimp_density_dalys_suffering_per_shrimp_conventional = shrimp_density_hrs_suffering_per_shrimp_conventional / HOURS_PER_YEAR
 shrimp_density_percent_suffering_reduced = sample_beta(3, 12) # mean around 20%
 shrimp_density_dalys_reduced_per_dollar = shrimp_per_dollar_density * shrimp_density_dalys_suffering_per_shrimp_conventional * shrimp_density_percent_suffering_reduced
@@ -211,7 +211,8 @@ carp_sy_per_1000 = carp_sy_per_dollar * 1000
 carp_stats = pcts(carp_sy_per_1000)
 
 # ── BSF (Black Soldier Fly, proxy for invertebrates) ──
-# Source: DEFAULT_BSF_PARAMS except for probability of success 
+# Source: DEFAULT_BSF_PARAMS except for probability of success and proportion reduced
+# probability of harm not considered
 
 bsf_num_born = sample_norm_ci(200e9, 300e9, lclip=20e9, rclip=1000e9)
 bsf_prop_affected = sample_lognorm_ci(5e-5, 1e-3, lclip=1e-6, rclip=5e-3)
@@ -279,6 +280,15 @@ wild_share_mammals = sample_beta(1, 1) # mean around 50% of wild animal welfare 
 wild_sy_per_1000_mixture_distribution = (wild_share_mammals * wild_mammal_sy_per_1000 + (1 - wild_share_mammals) * wild_invert_sy_per_1000)
 wild_sy_per_1000 = wild_sy_per_1000_mixture_distribution
 wild_stats = pcts(wild_sy_per_1000)
+
+# ── Derived interventions ──
+
+# Policy advocacy: weighted blend of chicken and shrimp at 50% discount
+policy_blend = 0.5 * (0.6 * chicken_sy_per_1000 + 0.4 * shrimp_sy_per_1000)
+
+# Movement building: 25% of the same blend as indirect multiplier
+movement = 0.25 * (0.6 * chicken_sy_per_1000 + 0.4 * shrimp_sy_per_1000)
+
 # ── Write output ──
 
 output = {
@@ -350,7 +360,8 @@ output = {
             "species": "multiple",
             "effect_start_year": 4,
             "persistence_years": 15,
-            "percentiles_per_1000": None,  # computed below
+            "percentiles_per_1000": pcts(policy_blend),
+            "samples_per_1000": downsample(policy_blend),
         },
         "movement_building": {
             "description": "Movement capacity building, infrastructure, mobilization",
@@ -359,7 +370,8 @@ output = {
             "species": "multiple",
             "effect_start_year": 4,
             "persistence_years": 10,
-            "percentiles_per_1000": None,  # computed below
+            "percentiles_per_1000": pcts(movement),
+            "samples_per_1000": downsample(movement),
         },
         "wild_animal_welfare": {
             "description": "Wild animal welfare research and field-building",
@@ -374,18 +386,6 @@ output = {
     },
 }
 
-# ── Compute derived interventions ──
-
-# Policy advocacy: weighted blend of chicken and shrimp at 50% discount
-policy_blend = 0.5 * (0.6 * chicken_sy_per_1000 + 0.4 * shrimp_sy_per_1000)
-output["interventions"]["policy_advocacy_multi_species"]["percentiles_per_1000"] = pcts(policy_blend)
-output["interventions"]["policy_advocacy_multi_species"]["samples_per_1000"] = downsample(policy_blend)
-
-# Movement building: 25% of chicken estimate as indirect multiplier
-movement = 0.25 * (0.6* chicken_sy_per_1000 + 0.4 * shrimp_sy_per_1000)
-output["interventions"]["movement_building"]["percentiles_per_1000"] = pcts(movement)
-output["interventions"]["movement_building"]["samples_per_1000"] = downsample(movement)
-
 # ── Configure YAML float formatting ──
 
 def represent_float(dumper, value):
@@ -395,9 +395,8 @@ def represent_float(dumper, value):
 
 yaml.add_representer(float, represent_float)
 
-# ── Write output ──
+# ── Write primary outputs ──
 
-import os
 output_path = os.path.join(os.path.dirname(__file__), "ccm_intervention_estimates.yaml")
 with open(output_path, "w") as f:
     yaml.dump(output, f, default_flow_style=False, sort_keys=False, width=120)
@@ -428,7 +427,7 @@ for name, data in output["interventions"].items():
         print(f"  {name}: p1={p['p1']:.2f}, p5={p['p5']:.2f}, p10={p['p10']:.2f}, p50={p['p50']:.2f}, p90={p['p90']:.2f}, p95={p['p95']:.2f}, p99={p['p99']:.2f}, mean={p['mean']:.2f}")
 
 # ══════════════════════════════════════════════════════════════════════════
-# VISUALIZATION AND EXTENDED STATISTICS
+# QC: VISUALIZATIONS AND EXTENDED STATISTICS
 # ══════════════════════════════════════════════════════════════════════════
 
 print("\n" + "=" * 70)

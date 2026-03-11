@@ -2,16 +2,24 @@
 ## life-years saved, YLDs averted, and income doublings per $1M spent. 
 ## Modified to include risk adjustment calculations directly.
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import numpy as np
 import pandas as pd
 import squigglepy as sq
 import matplotlib.pyplot as plt
 import os
-import math
 
-UNITS_VALUE_PER_M_PER_X_CASH = 3280
+from risk_profiles import compute_risk_profiles, RISK_PROFILES
+
+# some calculations in this file were done in this Google Sheets spreadsheet: 
+# https://docs.google.com/spreadsheets/d/1cKN0tWL-76SmElE5N4F7xaySzUQ_bU24ZbN64ObUIRw/edit?usp=sharing
+
+UNITS_VALUE_PER_M_PER_X_CASH = 3280 # calculated offline
 N_SAMPLES = 10000
-LIFE_YEARS_PER_LIFE = 60
+LIFE_YEARS_PER_LIFE = 60 # assumed for the average life saved by GW
 
 ## overall cost-effectiveness distribution for GW's portfolio, in terms of units value per $1M spent, using GW moral weights. 
 below_8x_dist = sq.lognorm(2, 8, lclip=0.5, rclip=16, credibility=90)
@@ -24,7 +32,7 @@ percent_portfolio_by_costeffectiveness = {
     'above_16x': 0.27}
 
 gw_moral_weights = {
-    'YLDs_averted': 2.3,
+    'YLDs_averted': 2.3, # GW moral weights
     'lives_saved': 115.6,
     'income_doublings': 1
 }
@@ -52,15 +60,15 @@ def sample_units_value_per_m():
 sample_units_value_per_M = sample_units_value_per_m()
 summarize_array(sample_units_value_per_M)
 
-
 ## Estimate the percent of GW's effect that is in the form of life-years saved, YLDs averted, and income doublings.
+## See here: https://docs.google.com/spreadsheets/d/1cKN0tWL-76SmElE5N4F7xaySzUQ_bU24ZbN64ObUIRw/edit?gid=0#gid=0&range=A1:B1
 percent_effect_by_type_dict = {
     'Malaria prevention and treatment': 
         {'YLDs_averted': 0.142, 'lives_saved': 0.583, 'income_doublings': 0.274},
     'Vaccinations': 
-        {'YLDs_averted': 0.070, 'lives_saved': 0.707, 'income_doublings': 0.223},
+        {'YLDs_averted': 0.067, 'lives_saved': 0.709, 'income_doublings': 0.224},
     'Malnutrition treatment': 
-        {'YLDs_averted': 0.060, 'lives_saved': 0.782, 'income_doublings': 0.158},
+        {'YLDs_averted': 0.039, 'lives_saved': 0.800, 'income_doublings': 0.161},
     'Water quality': 
         {'YLDs_averted': 0.028, 'lives_saved': 0.665, 'income_doublings': 0.307},
     'VAS': 
@@ -74,7 +82,7 @@ percent_effect_by_type_dict = {
 }
 
 percent_funding_by_dist_dict = {
-    'Malaria prevention and treatment': 0.38,
+    'Malaria prevention and treatment': 0.38, # https://blog.givewell.org/wp-content/uploads/2026/02/Copy-of-Funding-Category-Comparison-MY2025-Blog-Post-Chart.png
     'Vaccinations': 0.12,
     'Malnutrition treatment': 0.09,
     'Water quality': 0.09,
@@ -84,7 +92,7 @@ percent_funding_by_dist_dict = {
     'Family planning': 0.02,
 }
 
-def get_weighted_average_percent_effect_by_type(percent_effect_by_type_dict, percent_funding_by_dist_dict):
+def get_weighted_average_percent_effect_by_type(percent_effect_by_type_dict, percent_funding_by_dist_dict, to_print=False):
     # make dataframe with percent effect by type and percent funding by type, then calculate weighted average percent effect by type
     percent_effect_by_type_df = pd.DataFrame(percent_effect_by_type_dict).T
     percent_effect_by_type_df['percent_funding'] = percent_effect_by_type_df.index.map(percent_funding_by_dist_dict)
@@ -94,7 +102,13 @@ def get_weighted_average_percent_effect_by_type(percent_effect_by_type_dict, per
     for effect_type in ['YLDs_averted', 'lives_saved', 'income_doublings']:
         percent_effect_by_type_df[effect_type] = percent_effect_by_type_df[effect_type] * percent_effect_by_type_df['percent_funding']/sum_percent_funding
     weighted_average_percent_effect_by_type = percent_effect_by_type_df[['YLDs_averted', 'lives_saved', 'income_doublings']].sum()
+
+    if to_print:
+        print("Weighted average percent effect by type:")
+        print(weighted_average_percent_effect_by_type)
+
     return weighted_average_percent_effect_by_type
+
 
 def get_sample_units_value_by_type(sample_units_value_per_M, weighted_average_percent_effect_by_type, to_print=False):
     sample_effect_by_type = pd.DataFrame({
@@ -103,6 +117,7 @@ def get_sample_units_value_by_type(sample_units_value_per_M, weighted_average_pe
         'income_doublings': sample_units_value_per_M * weighted_average_percent_effect_by_type['income_doublings'],
     })
     if to_print: 
+        print("\nSample effect by type (units value per $1M):")
         print('YLDs_averted avg: {}'.format(np.mean(sample_effect_by_type['YLDs_averted'])))
         print('lives_saved avg: {}'.format(np.mean(sample_effect_by_type['lives_saved'])))
         print('income_doublings avg: {}'.format(np.mean(sample_effect_by_type['income_doublings'])))
@@ -115,6 +130,7 @@ def get_distribution_effect_per_M(sample_effect_by_type, to_print=False):
         distribution_effect_per_M[effect_type] = sample_effect_by_type[effect_type]/gw_moral_weights[effect_type]
 
     if to_print:
+        print("\nDistribution of effect per $1M by type (after applying GW moral weights):")
         for effect_type in ['YLDs_averted', 'lives_saved', 'income_doublings']:
             print('{} avg: {}'.format(effect_type, np.mean(distribution_effect_per_M[effect_type])))
 
@@ -129,12 +145,18 @@ temporal_breakdown_by_type_dict = {
         {'0-5 years': 0.180, '5-10 years': 0.014, '10-20 years': 0.125, '20-100 years': 0.681, '100-500 years': 0, '500+ years': 0},
 }
 
-def get_effect_per_M_by_time(distribution_effect_by_type, temporal_breakdown_by_type_dict):
+def get_effect_per_M_by_time(distribution_effect_by_type, temporal_breakdown_by_type_dict, to_print=False):
     effect_per_M_by_time = {}
     for effect_type in ['YLDs_averted', 'lives_saved', 'income_doublings']:
         effect_per_M_by_time[effect_type] = {}
         for time_horizon in ['0-5 years', '5-10 years', '10-20 years', '20-100 years', '100-500 years', '500+ years']:
             effect_per_M_by_time[effect_type][time_horizon] = distribution_effect_by_type[effect_type] * temporal_breakdown_by_type_dict[effect_type][time_horizon]
+    
+    if to_print:
+        for effect_type in ['YLDs_averted', 'lives_saved', 'income_doublings']:
+            for time_horizon in ['0-5 years', '5-10 years', '10-20 years', '20-100 years', '100-500 years', '500+ years']:
+                print('{} - {}: {}'.format(effect_type, time_horizon, np.mean(effect_per_M_by_time[effect_type][time_horizon])))
+
     return effect_per_M_by_time
 
 def convert_lives_saved_to_life_years_saved(effect_per_M_by_time):
@@ -183,166 +205,21 @@ def create_and_save_histograms(effect_per_M_by_time):
 # RISK ADJUSTMENT FUNCTIONS
 # ============================================================================
 
-# Risk parameters
-RISK_PARAMS = {
-    'dmreu_p': 0.05,
-    'wlu_low': 0.01,
-    'wlu_moderate': 0.05,
-    'wlu_high': 0.1,
-    'truncation_percentile': 0.99,
-    'loss_aversion_lambda': 2.5,
-}
-
-def compute_dmreu(samples, p=0.05):
-    """Difference-Making Risk-Weighted Expected Utility."""
-    if len(samples) == 0 or np.all(samples == 0):
-        return 0.0
-    
-    a = -2.0 / math.log10(p)
-    d = np.sort(samples)
-    N = len(d)
-    P = 1.0 - np.arange(N + 1) / N
-    m_P = np.power(P, a)
-    weights = m_P[:-1] - m_P[1:]
-    return float(np.dot(d, weights))
-
-
-def compute_wlu(samples, c=0.05):
-    """Weighted Linear Utility."""
-    if len(samples) == 0 or np.all(samples == 0):
-        return 0.0
-    
-    if c <= 0:
-        return float(np.mean(samples))
-    
-    abs_samples = np.abs(samples)
-    powered = np.power(np.clip(abs_samples, 0, 1e15), c)
-    w_positive = 1.0 / (1.0 + powered)
-    w_negative = 2.0 - 1.0 / (1.0 + powered)
-    weights = np.where(samples >= 0, w_positive, w_negative)
-    w_mean = np.mean(weights)
-    
-    if w_mean <= 0:
-        return float(np.mean(samples))
-    
-    w_hat = weights / w_mean
-    return float(np.mean(w_hat * samples))
-
-
-def compute_ambiguity_percentile(samples):
-    """Percentile-based ambiguity aversion with exponential decay."""
-    if len(samples) == 0 or np.all(samples == 0):
-        return 0.0
-    
-    d = np.sort(samples)
-    N = len(d)
-    percentiles = np.arange(N) / (N - 1) * 100
-    prelim_weights = np.ones(N)
-    
-    # Decay region: (97.5, 99.9]
-    mask_decay = (percentiles > 97.5) & (percentiles <= 99.9)
-    if np.any(mask_decay):
-        x = percentiles[mask_decay]
-        decay_coef = -np.log(100) / 1.5
-        prelim_weights[mask_decay] = np.exp(decay_coef * (x - 97.5))
-    
-    # Zero weight: >99.9
-    prelim_weights[percentiles > 99.9] = 0.0
-    
-    w_sum = np.sum(prelim_weights)
-    if w_sum <= 0:
-        return float(np.mean(samples))
-    
-    final_weights = prelim_weights * (N / w_sum)
-    return float(np.sum(final_weights * d) / N)
-
-
-def compute_all_risk_profiles(samples):
-    """
-    Compute all 9 risk profiles from simulation samples.
-    
-    Args:
-        samples: numpy array of simulation draws
-        
-    Returns:
-        Dictionary with 9 risk-adjusted values
-    """
-    if len(samples) == 0 or np.all(samples == 0):
-        return {k: 0.0 for k in ['neutral', 'upside', 'downside', 'combined',
-                                  'dmreu', 'wlu_low', 'wlu_moderate', 'wlu_high', 'ambiguity']}
-    
-    # Convert to numpy array if needed
-    samples = np.array(samples)
-    
-    # 1. Neutral: Standard expected value
-    neutral = float(np.mean(samples))
-    
-    # 2. Upside: Truncate at 99th percentile
-    p99 = np.percentile(samples, RISK_PARAMS['truncation_percentile'] * 100)
-    truncated = np.minimum(samples, p99)
-    upside = float(np.mean(truncated))
-    
-    # 3. Downside: Loss aversion
-    median = np.median(samples)
-    lam = RISK_PARAMS['loss_aversion_lambda']
-    utility = np.where(samples >= median, samples - median, lam * (samples - median))
-    downside = float(median + np.mean(utility))
-    
-    # 4. Combined: Percentile-based weight decay (97.5-99.9%) + loss aversion
-    outcomes_c = np.sort(samples)
-    N_c = len(outcomes_c)
-    pcts_c = np.arange(N_c) / max(N_c - 1, 1) * 100
-    w_c = np.ones(N_c)
-    mask_decay_c = (pcts_c > 97.5) & (pcts_c <= 99.9)
-    if np.any(mask_decay_c):
-        w_c[mask_decay_c] = np.exp(-np.log(100) / 1.5 * (pcts_c[mask_decay_c] - 97.5))
-    w_c[pcts_c > 99.9] = 0.0
-    util_c = np.where(outcomes_c >= median, outcomes_c - median, lam * (outcomes_c - median))
-    w_sum_c = np.sum(w_c)
-    if w_sum_c > 0:
-        combined = float(median + np.sum(w_c * (N_c / w_sum_c) * util_c) / N_c)
-    else:
-        combined = float(median + np.mean(util_c))
-    
-    # 5. DMREU
-    dmreu = compute_dmreu(samples, p=RISK_PARAMS['dmreu_p'])
-    
-    # 6-8. WLU
-    wlu_low = compute_wlu(samples, c=RISK_PARAMS['wlu_low'])
-    wlu_moderate = compute_wlu(samples, c=RISK_PARAMS['wlu_moderate'])
-    wlu_high = compute_wlu(samples, c=RISK_PARAMS['wlu_high'])
-    
-    # 9. Ambiguity
-    ambiguity = compute_ambiguity_percentile(samples)
-    
-    return {
-        'neutral': neutral,
-        'upside': upside,
-        'downside': downside,
-        'combined': combined,
-        'dmreu': dmreu,
-        'wlu_low': wlu_low,
-        'wlu_moderate': wlu_moderate,
-        'wlu_high': wlu_high,
-        'ambiguity': ambiguity,
-    }
-
-
 def apply_risk_adjustments_to_simulations(effect_per_M_by_time):
     """
     Apply risk adjustments to the simulation data.
-    
+
     Args:
         effect_per_M_by_time: Dictionary with structure:
             {effect_type: {time_horizon: numpy_array}}
-    
+
     Returns:
         pandas DataFrame in RP standard format
     """
     print("\n" + "=" * 70)
     print("APPLYING RISK ADJUSTMENTS")
     print("=" * 70)
-    
+
     # Time horizon mapping
     time_horizon_map = {
         '0-5 years': 0,
@@ -352,23 +229,19 @@ def apply_risk_adjustments_to_simulations(effect_per_M_by_time):
         '100-500 years': 4,
         '500+ years': 5,
     }
-    
+
     # Effect type mapping
     effect_mapping = {
         'life_years_saved': 'life_years',
         'YLDs_averted': 'ylds',
         'income_doublings': 'income_doublings',
     }
-    
-    # Risk profile names
-    risk_profiles = ['neutral', 'upside', 'downside', 'combined', 'dmreu',
-                     'wlu_low', 'wlu_moderate', 'wlu_high', 'ambiguity']
-    
+
     results = []
-    
+
     for effect_type in ['life_years_saved', 'YLDs_averted', 'income_doublings']:
         print(f"\nProcessing: {effect_type}")
-        
+
         # Build row for this effect
         row = {
             'project_id': 'givewell',
@@ -376,22 +249,21 @@ def apply_risk_adjustments_to_simulations(effect_per_M_by_time):
             'effect_id': effect_type,
             'recipient_type': effect_mapping[effect_type],
         }
-        
+
         # Process each time horizon
         for time_horizon in ['0-5 years', '5-10 years', '10-20 years', '20-100 years', '100-500 years', '500+ years']:
             t_idx = time_horizon_map[time_horizon]
             samples = effect_per_M_by_time[effect_type][time_horizon]
-            
+
             print(f"  {time_horizon}: {len(samples)} samples, mean={np.mean(samples):.2f}")
-            
+
             # Compute risk profiles
-            risk_values = compute_all_risk_profiles(samples)
-            
+            risk_values = compute_risk_profiles(samples)
+
             # Add to row
-            for rp in risk_profiles:
-                rp_display = rp.replace('_', ' - ') if 'wlu' in rp else rp
-                row[f"{rp_display}_t{t_idx}"] = risk_values[rp]
-        
+            for rp in RISK_PROFILES:
+                row[f"{rp}_t{t_idx}"] = risk_values[rp]
+
         results.append(row)
     
     # Convert to DataFrame
@@ -421,17 +293,17 @@ def main():
     # Generate simulations (original code)
     print("\n1. Generating cost-effectiveness simulations...")
     weighted_average_percent_effect_by_type = get_weighted_average_percent_effect_by_type(
-        percent_effect_by_type_dict, percent_funding_by_dist_dict)
+        percent_effect_by_type_dict, percent_funding_by_dist_dict, True)
     
     sample_units_value_per_M = sample_units_value_per_m()
     sample_effect_by_type = get_sample_units_value_by_type(
-        sample_units_value_per_M, weighted_average_percent_effect_by_type, to_print=False)
+        sample_units_value_per_M, weighted_average_percent_effect_by_type, to_print=True)
     
     distribution_effect_by_type = get_distribution_effect_per_M(
-        sample_effect_by_type, to_print=False)
+        sample_effect_by_type, to_print=True)
     
     effect_per_M_by_time = get_effect_per_M_by_time(
-        distribution_effect_by_type, temporal_breakdown_by_type_dict)
+        distribution_effect_by_type, temporal_breakdown_by_type_dict, to_print=True)
     
     effect_per_M_by_time = convert_lives_saved_to_life_years_saved(effect_per_M_by_time)
     
@@ -458,7 +330,7 @@ def main():
     print("RISK ADJUSTMENT SUMMARY")
     print("=" * 70)
     print("\nLife Years Saved (0-5 years):")
-    for rp in ['neutral', 'dmreu', 'downside', 'combined']:
+    for rp in ['neutral', 'dmreu', 'upside', 'downside', 'combined', 'wlu - low', 'wlu - moderate', 'wlu - high', 'ambiguity']:
         rp_col = rp.replace('_', ' - ') if 'wlu' in rp else rp
         value = risk_adjusted_df[risk_adjusted_df['effect_id'] == 'life_years_saved'][f'{rp_col}_t0'].values[0]
         neutral_value = risk_adjusted_df[risk_adjusted_df['effect_id'] == 'life_years_saved']['neutral_t0'].values[0]

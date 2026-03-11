@@ -26,14 +26,16 @@ Usage:
 import argparse
 import csv
 import itertools
-import math
 import sys
 import time
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
 
 from fund_profiles import get_fund_profile
 from gcr_model import ev_sub_extinction_tier, run_monte_carlo
+from risk_profiles import compute_risk_profiles
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -55,16 +57,6 @@ RISK_PROFILES = [
     "dmreu", "wlu - low", "wlu - moderate", "wlu - high", "ambiguity",
 ]
 
-# Informal adjustment defaults.
-TRUNCATION_PERCENTILE = 0.99  # upside skepticism: cap at this quantile
-LOSS_AVERSION_LAMBDA = 2.5    # downside protection: amplify losses by this factor
-
-# Formal model defaults (Duffy 2023, moderate risk aversion).
-DMREU_P = 0.05       # thought-experiment probability → exponent a = -2/log10(p)
-WLU_L = 0.01
-WLU_M = 0.05         # concavity; 0=neutral, 0.05=low-moderate
-WLU_H = 0.1
-AMBIGUITY_K = 4.0    # cubic coefficient; 0=neutral, 4=mild (1.5x weight-to-worst)
 
 DR_SPEND_POINTS = list(range(10, 901, 10))  # $10M .. $900M in $10M steps
 
@@ -122,147 +114,6 @@ def compute_diminishing_row(budget_m, anchors):
 # ---------------------------------------------------------------------------
 
 
-def _compute_risk_profiles(per_1m):
-    """Compute all 7 risk-adjusted values for an empirical distribution.
-
-    Matches the RP distribution-fitting risk profile definitions.
-
-    Informal:
-      neutral  — risk-neutral EV (mean)
-      upside   — upside skepticism: truncate at p99, renormalise
-      downside — downside protection: loss-averse utility (ref=median)
-      combined — percentile-based weighting + loss aversion (NEW)
-
-    Formal (Duffy 2023):
-      dmreu    — DMREU with moderate risk aversion (p=0.05)
-      wlu      — WLU with low-moderate concavity (c=0.05)
-      ambiguity — Ambiguity aversion with percentile-based weighting (NEW)
-    """
-    # ── Informal adjustments ──
-
-    neutral = float(np.mean(per_1m))
-
-    trunc_val = np.percentile(per_1m, TRUNCATION_PERCENTILE * 100)
-    upside = float(np.mean(np.minimum(per_1m, trunc_val)))
-
-    ref = float(np.median(per_1m))
-    gains = per_1m - ref
-    utilities = np.where(gains >= 0, gains, LOSS_AVERSION_LAMBDA * gains)
-    downside = float(np.mean(utilities) + ref)
-
-    # Combined: percentile-based weighting + loss aversion (NEW)
-    # Sort outcomes worst to best
-    outcomes = np.sort(per_1m)
-    N_combined = len(outcomes)
-    
-    # Calculate percentiles (0-100 scale)
-    percentiles_combined = np.arange(N_combined) / max(N_combined - 1, 1) * 100
-    
-    # Apply percentile-based weights
-    weights_combined = np.ones(N_combined)
-    
-    # Decay region: (97.5, 99.9]
-    mask_decay_combined = (percentiles_combined > 97.5) & (percentiles_combined <= 99.9)
-    if np.any(mask_decay_combined):
-        x_combined = percentiles_combined[mask_decay_combined]
-        decay_coef_combined = -np.log(100) / 1.5
-        weights_combined[mask_decay_combined] = np.exp(decay_coef_combined * (x_combined - 97.5))
-    
-    # Zero weight region: >99.9
-    mask_zero_combined = percentiles_combined > 99.9
-    weights_combined[mask_zero_combined] = 0.0
-    
-    # Apply loss aversion utility to each outcome
-    gains_combined = outcomes - ref
-    utilities_combined = np.where(gains_combined >= 0, gains_combined, LOSS_AVERSION_LAMBDA * gains_combined)
-    
-    # Normalize weights
-    w_sum_combined = np.sum(weights_combined)
-    if w_sum_combined > 0:
-        final_weights_combined = weights_combined * (N_combined / w_sum_combined)
-        weighted_utility = np.sum(final_weights_combined * utilities_combined) / N_combined
-        combined = float(weighted_utility + ref)
-    else:
-        combined = float(np.mean(utilities_combined) + ref)
-
-    # ── Formal models (Duffy 2023) ──
-
-    d = np.sort(per_1m)  # worst to best
-    N = len(d)
-
-    # DMREU: probability-weighted with m(P) = P^a
-    a = -2.0 / math.log10(DMREU_P)
-    P = 1.0 - np.arange(N + 1) / N
-    m_P = np.power(P, a)
-    dmreu_weights = m_P[:-1] - m_P[1:]
-    dmreu = float(np.dot(d, dmreu_weights))
-
-    # WLU: magnitude-sensitive weights
-    abs_d = np.abs(d)
-
-    # WLU low
-    powered_L = np.power(np.clip(abs_d, 0, 1e15), WLU_L)
-    w_pos_L = 1.0 / (1.0 + powered_L)
-    w_neg_L = 2.0 - 1.0 / (1.0 + powered_L)
-    wlu_w_L = np.where(d >= 0, w_pos_L, w_neg_L)
-    w_mean_L = np.mean(wlu_w_L)
-    if w_mean_L > 0:
-        wlu_w_hat_L = wlu_w_L / w_mean_L
-        wlu_L = float(np.mean(wlu_w_hat_L * d))
-    else:
-        wlu_L = neutral
-
-    # WLU moderate
-    powered_M = np.power(np.clip(abs_d, 0, 1e15), WLU_M)
-    w_pos_M = 1.0 / (1.0 + powered_M)
-    w_neg_M = 2.0 - 1.0 / (1.0 + powered_M)
-    wlu_w_M = np.where(d >= 0, w_pos_M, w_neg_M)
-    w_mean_M = np.mean(wlu_w_M)
-    if w_mean_M > 0:
-        wlu_w_hat_M = wlu_w_M / w_mean_M
-        wlu_M = float(np.mean(wlu_w_hat_M * d))
-    else:
-        wlu_M = neutral
-
-    # WLU high
-    powered_H = np.power(np.clip(abs_d, 0, 1e15), WLU_H)
-    w_pos_H = 1.0 / (1.0 + powered_H)
-    w_neg_H = 2.0 - 1.0 / (1.0 + powered_H)
-    wlu_w_H = np.where(d >= 0, w_pos_H, w_neg_H)
-    w_mean_H = np.mean(wlu_w_H)
-    if w_mean_H > 0:
-        wlu_w_hat_H = wlu_w_H / w_mean_H
-        wlu_H = float(np.mean(wlu_w_hat_H * d))
-    else:
-        wlu_H = neutral
-
-    # Ambiguity aversion: percentile-based exponential decay
-    percentiles = np.arange(N) / max(N - 1, 1) * 100  # Convert to 0-100 scale
-    # Initialize weights (all start at 1.0)
-    amb_w = np.ones(N)
-    # Apply exponential decay for (97.5, 99.9] percentile range
-    mask_decay = (percentiles > 97.5) & (percentiles <= 99.9)
-    if np.any(mask_decay):
-        x = percentiles[mask_decay]
-        decay_coef = -np.log(100) / 1.5  # ≈ -3.07
-        amb_w[mask_decay] = np.exp(decay_coef * (x - 97.5))
-    # Zero weight for percentiles > 99.9
-    mask_zero = percentiles > 99.9
-    amb_w[mask_zero] = 0.0
-    # Normalize weights
-    amb_sum = np.sum(amb_w)
-    if amb_sum > 0:
-        amb_w = amb_w * (N / amb_sum)
-        ambiguity = float(np.mean(amb_w * d))
-    else:
-        ambiguity = neutral
-
-    return {
-        "neutral": neutral, "upside": upside,
-        "downside": downside, "combined": combined,
-        "dmreu": dmreu, "wlu - low": wlu_L, "wlu - moderate": wlu_M, 
-        "wlu - high": wlu_H, "ambiguity": ambiguity,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -347,10 +198,10 @@ def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
                             for p in persistence_samples])
             period_evs = annual_evs * yrs
             per_1m = period_evs / budget * 1e6
-            horizon_data[pk] = _compute_risk_profiles(per_1m)
+            horizon_data[pk] = compute_risk_profiles(per_1m)
 
         total_per_1m = annual_evs * persistence_samples / budget * 1e6
-        total_profiles = _compute_risk_profiles(total_per_1m)
+        total_profiles = compute_risk_profiles(total_per_1m)
 
         if verbose:
             n_positive = np.sum(total_per_1m > 0)
@@ -421,10 +272,10 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True):
     horizon_data = {}
     for pk in all_period_keys:
         per_1m = horizon_raw[pk] * adj / budget * 1e6
-        horizon_data[pk] = _compute_risk_profiles(per_1m)
+        horizon_data[pk] = compute_risk_profiles(per_1m)
 
     total_per_1m = total_raw * adj / budget * 1e6
-    total_profiles = _compute_risk_profiles(total_per_1m)
+    total_profiles = compute_risk_profiles(total_per_1m)
     summary = {
         "n_samples": n_samples,
         **{f"total_{k}": v for k, v in total_profiles.items()},

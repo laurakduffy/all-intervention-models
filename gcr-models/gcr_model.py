@@ -43,6 +43,13 @@ class GCRParams:
     # If set, overrides bp_reduction_per_bn: specifies the absolute peak
     # annual risk reduction from the intervention (independent of baseline risk).
     abs_risk_reduction: np.ndarray = None
+    # Option A parameterisation (preferred): sweep the fractional reduction of
+    # cause-specific r_max independently of total cumulative risk.
+    # rel_risk_reduction: fraction of cause-specific r_max removed (e.g. 0.001).
+    # cause_fraction: share of total x-risk attributable to this cause.
+    # Model computes: rel_rr_from_int = rel_risk_reduction * cause_fraction.
+    rel_risk_reduction: np.ndarray = None
+    cause_fraction: float = 1.0
 
     # Growth parameters
     initial_value: np.ndarray = None
@@ -52,10 +59,48 @@ class GCRParams:
     # Cubic growth (stellar settlement)
     cubic_growth: np.ndarray = None
     T_c: np.ndarray = None
-    r_g: float = 1.3e5
+    r_g: float = 1.3e5  # radius of milky way in ly
     s: np.ndarray = None
-    d_g: float = 2.2e-5
-    d_s: float = 2.9e-9
+    d_g: float = 2.2e-5 # Density stars in MW galaxy See page 19 of Tarsney (2020), unit: stars/ly^3
+    d_s: float = 2.9e-9 # Density stars in virgo supercluster. See page 19 of Tarsney (2020), unit: stars/ly^3
+
+
+def _solve_r_max(cumulative_risk, year_max_risk, year_risk_1pct_max, r_inf, n_years=100):
+    """Solve for the Gaussian peak annual risk r_max that reproduces cumulative_risk.
+
+    An exact numerical solve that is consistent for any (year_max_risk, year_risk_1pct_max) combination.
+    Uses vectorized bisection over n_years+1 discrete annual time steps.
+
+    Args:
+        cumulative_risk: array of cumulative x-risk over n_years (shape n).
+        year_max_risk:   array of peak-risk years T_c (shape n).
+        year_risk_1pct_max: array — sigma = year_risk_1pct_max / 3 (shape n).
+        r_inf:           array of background annual risk (shape n).
+        n_years:         integration horizon (default 100).
+
+    Returns:
+        r_max: array (shape n) such that
+            1 - prod_{t=0}^{n_years}(1 - clip(r_inf + r_max*G_t, 0, 1)) = cumulative_risk.
+    """
+    sigma = year_risk_1pct_max / 3.0
+    t = np.arange(n_years + 1, dtype=float)  # shape (n_years+1,)
+
+    def _cum(r_max_vec):
+        # gaussian shape: (n_years+1, n)
+        gaussian = np.exp(
+            -0.5 * ((t[:, None] - year_max_risk[None, :]) / sigma[None, :]) ** 2
+        )
+        annual = np.clip(r_inf[None, :] + r_max_vec[None, :] * gaussian, 0.0, 1.0)
+        return 1.0 - np.prod(1.0 - annual, axis=0)
+
+    n = len(cumulative_risk)
+    lo = np.zeros(n)
+    hi = np.ones(n)
+    for _ in range(60):  # 2^-60 ≈ 1e-18 precision
+        mid = 0.5 * (lo + hi)
+        hi = np.where(_cum(mid) < cumulative_risk, hi, mid)
+        lo = np.where(_cum(mid) < cumulative_risk, mid, lo)
+    return 0.5 * (lo + hi)
 
 
 class GCRModel:
@@ -73,9 +118,18 @@ class GCRModel:
 
     def _derive(self):
         p = self.p
-        self.r_max = 1.38 * (1 - (1 - p.cumulative_risk_100_yrs) ** (1 / 100))
+        self.r_max = _solve_r_max(
+            p.cumulative_risk_100_yrs,
+            p.year_max_risk,
+            p.year_risk_1pct_max,
+            p.r_inf,
+        )
         self.sd_risk = p.year_risk_1pct_max / 3
-        if p.abs_risk_reduction is not None:
+        if p.rel_risk_reduction is not None:
+            # Option A: rel_risk_reduction is independent of cumulative_risk_100_yrs.
+            # cause_fraction converts cause-specific to total-risk fraction.
+            self.rel_rr_from_int = p.rel_risk_reduction * p.cause_fraction
+        elif p.abs_risk_reduction is not None:
             self.rel_rr_from_int = p.abs_risk_reduction / self.r_max
         else:
             self.rel_rr_from_int = p.bp_reduction_per_bn * 0.0001 / B * p.budget
@@ -422,6 +476,17 @@ _BOOL_PARAMS = {"cubic_growth"}
 _SCALAR_PARAMS = {"budget", "r_g", "d_g", "d_s"}
 
 
+def _get_values_and_p(entry):
+    """Extract (values_list, probs_or_None) from a sweep param entry.
+
+    Entries can be a plain list (uniform sampling) or a dict:
+        {"values": [...], "p": [...]}   # weighted sampling
+    """
+    if isinstance(entry, dict):
+        return list(entry["values"]), entry.get("p", None)
+    return list(entry), None
+
+
 def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, p_harm=0.0, p_zero=0.0, harm_multiplier=1.0):
     """Run the GCR model with Monte Carlo sampling and stratified harm assignment.
     
@@ -460,29 +525,46 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
     
     if stratify_keys:
         # Build strata from key parameters
-        import itertools
-        strata_values = [sweep_params[k] for k in stratify_keys]
-        strata_combos = list(itertools.product(*strata_values))
+        strata_vals_per_key = [_get_values_and_p(sweep_params[k])[0] for k in stratify_keys]
+        strata_probs_per_key = []
+        for k in stratify_keys:
+            vals, probs = _get_values_and_p(sweep_params[k])
+            n = len(vals)
+            strata_probs_per_key.append(probs if probs is not None else [1.0 / n] * n)
+
+        strata_combos = list(itertools.product(*strata_vals_per_key))
         n_strata = len(strata_combos)
-        samples_per_stratum = n_samples // n_strata
-        remainder = n_samples % n_strata
-        
+
+        # Allocate samples proportionally to the product of marginal probs.
+        # This respects user-specified weights (e.g. cubic_growth=True at 1%).
+        raw_counts = []
+        for combo in strata_combos:
+            prob = 1.0
+            for ki, val in enumerate(combo):
+                idx = strata_vals_per_key[ki].index(val)
+                prob *= strata_probs_per_key[ki][idx]
+            raw_counts.append(n_samples * prob)
+        stratum_counts = [int(c) for c in raw_counts]
+        leftover = n_samples - sum(stratum_counts)
+        order = sorted(range(n_strata), key=lambda i: -(raw_counts[i] - stratum_counts[i]))
+        for i in order[:leftover]:
+            stratum_counts[i] += 1
+
         if verbose:
             print(f"Stratifying by: {', '.join(stratify_keys)} ({n_strata} strata)")
     else:
         # No stratification possible, fall back to simple sampling
         strata_combos = [None]
         n_strata = 1
-        samples_per_stratum = n_samples
-        remainder = 0
+        stratum_counts = [n_samples]
     
     # Sample parameters - stratified where applicable
     param_samples = {key: [] for key in sweep_params.keys()}
     effect_assignments = []  # 0=zero, 1=positive, 2=harm
     
     for stratum_idx, stratum in enumerate(strata_combos):
-        n_in_stratum = samples_per_stratum + (1 if stratum_idx < remainder else 0)
-        
+        n_in_stratum = stratum_counts[stratum_idx]
+
         # Sample from non-stratified parameters
         for key, values in sweep_params.items():
             if key in stratify_keys and stratum is not None:
@@ -490,8 +572,9 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
                 param_idx = stratify_keys.index(key)
                 param_samples[key].extend([stratum[param_idx]] * n_in_stratum)
             else:
-                # Random sampling
-                sampled = np.random.choice(values, size=n_in_stratum)
+                # Random sampling (respects per-param probability weights if provided)
+                vals, probs = _get_values_and_p(values)
+                sampled = np.random.choice(vals, size=n_in_stratum, p=probs)
                 param_samples[key].extend(sampled)
         
         # Stratified effect assignment within this stratum

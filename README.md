@@ -22,7 +22,7 @@ Estimates the cost-effectiveness of GiveWell's grant portfolio in terms of **lif
 - Decomposes effects by time horizon using fixed temporal breakdowns per cause type
 - Applies risk adjustments directly to 10,000 Monte Carlo simulation draws
 
-**Entry point:** `gw-models/gw_cea_modeling_with_risk.py`
+**Entry point:** `gw-models/gw_cea_modeling.py`
 **Output:** `gw-models/gw_risk_adjusted.csv`
 
 ---
@@ -113,7 +113,7 @@ Each model can be run independently. Regenerating all outputs before combining:
 ```bash
 # GiveWell
 cd gw-models
-python gw_cea_modeling_with_risk.py
+python gw_cea_modeling.py
 
 # GCR
 cd gcr-models

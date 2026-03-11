@@ -53,8 +53,8 @@ diminishing_returns_df = pd.concat([gw_diminishing_returns, \
                                     gcr_diminishing_returns], ignore_index=True)
 
 # upload the risk scores from the three models into a single dataframe
-gw_risk_scores = pd.read_csv('gw-models/gw_risk_adjusted.csv', skiprows=1)
-aw_risk_scores = pd.read_csv('aw-models/outputs/aw_combined_dataset.csv', skiprows=1)
+gw_risk_scores = pd.read_csv('gw-models/gw_risk_adjusted.csv')
+aw_risk_scores = pd.read_csv('aw-models/outputs/aw_combined_dataset.csv')
 gcr_risk_scores = pd.read_csv('gcr-models/rp_output.csv', skiprows=1)
 
 
@@ -147,6 +147,11 @@ projects_data = parse_effects(risk_scores_df)
 for pid in projects_data:
     projects_data[pid]["diminishing_returns"] = dim_returns_data.get(pid, [])
 
+# Sentinel bio sub-funds share the same diminishing returns as sentinel_bio
+for pid in ('sentinel_bio_10m_100m', 'sentinel_bio_100m_1b'):
+    if pid in projects_data:
+        projects_data[pid]["diminishing_returns"] = dim_returns_data.get('sentinel_bio', [])
+
 final_json_structure = {
   "name": "March 9, 2026 at 1:28 PM",
   "description": "Updated: March 9, 2026",
@@ -183,4 +188,24 @@ with open('output_data.json', 'w') as f:
     json.dump(final_json_structure, f, indent=2)
 
 print("Data successfully mapped and exported to output_data.json")
+
+# Export normalized risk-adjusted data to CSV
+time_labels = ['t0', 't1', 't2', 't3', 't4', 't5']
+rows = []
+for pid, proj in projects_data.items():
+    for eid, effect in proj['effects'].items():
+        row = {
+            'project_id': pid,
+            'effect_id': eid,
+            'recipient_type': effect['recipient_type'],
+            'near_term_xrisk': proj['tags']['near_term_xrisk'],
+        }
+        for rp_idx, rp in enumerate(RISK_PROFILES):
+            for t_idx, t in enumerate(time_labels):
+                row[f"{rp}_{t}"] = effect['values'][t_idx][rp_idx]
+        rows.append(row)
+
+normalized_df = pd.DataFrame(rows)
+normalized_df.to_csv('all_risk_adjusted.csv', index=False)
+print("Risk-adjusted data exported to all_risk_adjusted.csv")
 
