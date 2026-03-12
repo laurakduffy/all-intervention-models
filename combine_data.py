@@ -2,6 +2,7 @@
 import json
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 BUDGET_M = 897 # in Millions
 INCREMENT_SIZE = 10 # in Millions
@@ -152,9 +153,10 @@ for pid in ('sentinel_bio_10m_100m', 'sentinel_bio_100m_1b'):
     if pid in projects_data:
         projects_data[pid]["diminishing_returns"] = dim_returns_data.get('sentinel_bio', [])
 
+now = datetime.now()
 final_json_structure = {
-  "name": "March 9, 2026 at 1:28 PM",
-  "description": "Updated: March 9, 2026",
+  "name": now.strftime("%B %#d, %Y at %#I:%M %p"),
+  "description": "Updated: " + now.strftime("%B %#d, %Y"),
   "budget": BUDGET_M,
   "incrementSize": INCREMENT_SIZE,
   "moralWeightKeys": [
