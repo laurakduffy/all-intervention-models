@@ -7,7 +7,6 @@ __pycache__/
 *.npz
 
 # Generated outputs (regenerable by running the models)
-output_data.json
 gw-models/gw_risk_adjusted.csv
 gw-models/summary_statistics.csv
 gw-models/histograms/
