@@ -260,8 +260,11 @@ add_heading(doc, "1.  Overview", 1)
 add_body(doc,
     "This document describes the structure of fund_profiles.py, which contains all "
     "fund-specific assumptions used in the GCR (Global Catastrophic Risk) intervention "
-    "valuation model. The model implements a Tarsney-style expected-value framework "
-    "that accounts for both near-term and long-term (including stellar expansion) value."
+    "valuation model. The model was built by Rethink Priorities to evaluate the cost-"
+    "effectiveness of donations to GCR-focused organisations on behalf of Anthropic staff "
+    "who are deciding where to direct their personal philanthropy. Rethink Priorities is "
+    "the evaluator, not the funder. The model implements a Tarsney-style expected-value "
+    "framework that accounts for both near-term and long-term (including stellar expansion) value."
 )
 add_body(doc, "Three funds are currently modelled:")
 add_bullet(doc, f"Sentinel Bio -- biosecurity, extinction-risk pathway + sub-extinction tiers")
@@ -465,7 +468,7 @@ def _add_fund_section(doc, fund_key):
     add_table(doc,
         ["Parameter", "Value", "Source / reasoning"],
         [
-            ["budget",                fmt_dollar(budget),                        "RP grant amount"],
+            ["budget",                fmt_dollar(budget),                        "Grant amount being evaluated"],
             ["counterfactual_factor", f"{profile['counterfactual_factor']:.3f}", "Weighted counterfactual scenarios"],
             ["p_harm",                fmt_pct(profile["p_harm"], 0),             "Probability intervention is counterproductive"],
             ["p_zero",                fmt_pct(profile["p_zero"], 0),             "Probability intervention has no extinction-risk effect"],

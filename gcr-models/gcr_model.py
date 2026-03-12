@@ -329,7 +329,8 @@ class GCRModel:
         self.a1 = 4 / 3 * np.pi * p.d_g * self.v_s * p.s**3
         self.a2 = 4 / 3 * np.pi * p.d_s * self.v_s * p.s**3
 
-        # Risk arrays
+        # Risk arrays (kept as float64 — diff_in_survival involves catastrophic
+        # cancellation for low-risk scenarios; float32 would lose the signal entirely)
         r_array_1 = np.array(
             [self.get_annual_risk_level(t, 1) for t in years_arr]
         )
@@ -347,7 +348,8 @@ class GCRModel:
             [
                 self.get_total_value_level(t, y_const_value)
                 for t in range(max_num_years)
-            ]
+            ],
+            dtype=np.float32,
         )
 
         # Short-term intervention value by period
@@ -487,9 +489,9 @@ def _get_values_and_p(entry):
     return list(entry), None
 
 
-def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, p_harm=0.0, p_zero=0.0, harm_multiplier=1.0):
+def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, p_harm=0.0, p_zero=0.0, harm_multiplier=1.0, seed=42):
     """Run the GCR model with Monte Carlo sampling and stratified harm assignment.
-    
+
     Args:
         sweep_params: dict mapping parameter names to lists of values.
         fixed_params: dict mapping parameter names to single values held constant.
@@ -499,7 +501,8 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
         p_zero: Probability that intervention has zero effect (default: 0.0).
         harm_multiplier: If harm occurs, multiply effect by this factor (default: 1.0).
                         E.g., harm_multiplier=2.0 means harm is 2x the magnitude of benefit
-    
+        seed: Random seed for reproducibility (default: 42).
+
     Returns:
         dict with:
             total_values: np.ndarray of total EV per sample
@@ -511,7 +514,9 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
     """
     if p_zero + p_harm > 1.0:
         raise ValueError(f"p_zero ({p_zero}) + p_harm ({p_harm}) must be ≤ 1.0")
-    
+
+    np.random.seed(seed)
+
     if verbose:
         print(f"Monte Carlo: {n_samples:,} samples (stratified)")
     
@@ -590,22 +595,24 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
         n_zero = int(n_zero_expected)
         n_harm = int(n_harm_expected)
         
-        # Handle rounding to ensure we get exactly n_in_stratum samples
+        # Handle rounding: integer parts may sum to n_in_stratum - 1.
+        # Only add one sample if there is actually a shortfall.
         remainder_positive = n_positive_expected - n_positive
         remainder_zero = n_zero_expected - n_zero
         remainder_harm = n_harm_expected - n_harm
-        
-        # Probabilistically allocate remaining samples
-        rand_val = np.random.random()
-        if rand_val < remainder_positive:
-            n_positive += 1
-        elif rand_val < remainder_positive + remainder_zero:
-            n_zero += 1
-        else:
-            n_harm += 1
-        
-        # Adjust if we're over/under (shouldn't happen often)
+
         total = n_positive + n_zero + n_harm
+        if total < n_in_stratum:
+            rand_val = np.random.random()
+            if rand_val < remainder_positive:
+                n_positive += 1
+            elif rand_val < remainder_positive + remainder_zero:
+                n_zero += 1
+            else:
+                n_harm += 1
+            total += 1
+
+        # Safety net — should not trigger after the fix above
         if total < n_in_stratum:
             n_positive += (n_in_stratum - total)
         elif total > n_in_stratum:

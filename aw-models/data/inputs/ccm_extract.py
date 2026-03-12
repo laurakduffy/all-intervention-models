@@ -106,43 +106,64 @@ def extended_pcts(arr):
 
 
 def create_histogram(arr, title, output_path, bins=100):
-    """Create and save a histogram of the distribution.
-    
+    """Create and save a log-scale histogram of the distribution.
+
+    Uses log10-spaced bins so lognormal distributions appear roughly bell-shaped
+    rather than as a spike against a long empty tail.  Exact zeros (from binary
+    success draws) are excluded from the plot but their fraction is noted in the
+    title.
+
     Args:
         arr: Array of samples
         title: Chart title (intervention name)
         output_path: Path to save the PNG file
         bins: Number of histogram bins (default 100)
     """
+    arr = np.asarray(arr)
+    zero_frac = np.mean(arr == 0)
+    pos = arr[arr > 0]
+
     fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # Create histogram
-    ax.hist(arr, bins=bins, alpha=0.7, color='steelblue', edgecolor='black')
-    
-    # Add median and mean lines
-    median = np.median(arr)
-    mean = np.mean(arr)
-    ax.axvline(median, color='red', linestyle='--', linewidth=2, label=f'Median: {median:,.0f}')
-    ax.axvline(mean, color='orange', linestyle='--', linewidth=2, label=f'Mean: {mean:,.0f}')
-    
-    # Add percentile shading (10th-90th)
-    p10, p90 = np.percentile(arr, [10, 90])
-    ax.axvspan(p10, p90, alpha=0.2, color='green', label='10th-90th percentile')
-    
-    # Labels and title
-    ax.set_xlabel('Suffering-Years Averted per $1000', fontsize=12)
+
+    if len(pos) == 0:
+        ax.text(0.5, 0.5, 'All values are zero', ha='center', va='center',
+                transform=ax.transAxes, fontsize=14)
+    else:
+        log_min = np.floor(np.log10(np.percentile(pos, 0.1)))
+        log_max = np.ceil(np.log10(np.percentile(pos, 99.9)))
+        log_bins = np.logspace(log_min, log_max, bins + 1)
+
+        ax.hist(pos, bins=log_bins, alpha=0.7, color='steelblue', edgecolor='black')
+        ax.set_xscale('log')
+
+        # Median and mean of non-zero values
+        median = np.median(pos)
+        mean = np.mean(pos)
+        ax.axvline(median, color='red', linestyle='--', linewidth=2,
+                   label=f'Median (non-zero): {median:,.1f}')
+        ax.axvline(mean, color='orange', linestyle='--', linewidth=2,
+                   label=f'Mean (non-zero): {mean:,.1f}')
+
+        # Percentile shading (10th–90th of non-zero values)
+        p10, p90 = np.percentile(pos, [10, 90])
+        ax.axvspan(p10, p90, alpha=0.2, color='green', label='10th–90th percentile')
+
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:,.3g}'))
+
+    full_title = title
+    if zero_frac > 0:
+        full_title += f'\n({zero_frac:.1%} of samples are zero, excluded from plot)'
+
+    ax.set_xlabel('Suffering-Years Averted per $1000 (log scale)', fontsize=12)
     ax.set_ylabel('Frequency', fontsize=12)
-    ax.set_title(title, fontsize=14, fontweight='bold')
+    ax.set_title(full_title, fontsize=13, fontweight='bold')
     ax.legend(loc='upper right')
-    ax.grid(alpha=0.3)
-    
-    # Format x-axis with commas
-    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:,.0f}'))
-    
+    ax.grid(alpha=0.3, which='both')
+
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
-    
+
     print(f"    Saved histogram: {output_path}")
 
 

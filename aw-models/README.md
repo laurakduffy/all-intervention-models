@@ -21,13 +21,15 @@ python run.py --fund navigation_fund         # (template — fill in splits firs
 ## Architecture
 
 ```
-aw-fund-evaluations/
+aw-models/
 ├── data/inputs/
 │   ├── ccm_intervention_estimates.yaml  # CCM- or otherwise-derived CE percentiles per intervention
 │   ├── ccm_extract.py                  # Script that generated the above from CCM params
 │   ├── funds/
 │   │   ├── ea_awf.yaml                 # EA AWF splits (estimated from 2024 payouts)
-│   │   ├── navigation_fund.yaml        # Template — awaiting Jesse's data
+│   │   ├── navigation_fund.yaml        # Navigation Fund (general)
+│   │   ├── navigation_fund_cagefree.yaml   # Navigation Fund cage-free sub-portfolio
+│   │   ├── navigation_fund_general.yaml    # Navigation Fund general sub-portfolio
 │   │   ├── coefficient_giving.yaml     # Template — awaiting Lewis's data
 │   │   ├── aw_combined.yaml            # Weighted aggregate
 │   │   └── TEMPLATE.yaml               # Instructions for adding a new fund

@@ -6,15 +6,23 @@ doc = Document()
 # Title
 doc.add_heading('GiveWell Cost-Effectiveness Estimation: Methodology Notes', 0)
 
+doc.add_paragraph(
+    'Note on framing: This model was built by Rethink Priorities to evaluate the cost-'
+    'effectiveness of donations to GiveWell\'s portfolio on behalf of Anthropic staff '
+    'who are deciding where to direct their personal philanthropy. Rethink Priorities '
+    'is the evaluator, not the funder. All references to "$1M spent" or "donations" '
+    'refer to hypothetical Anthropic staff giving, not RP grantmaking.'
+)
+
 # ─────────────────────────────────────────────────────────────
 # 0. OVERALL PROCESS
 # ─────────────────────────────────────────────────────────────
 doc.add_heading('0. Overall Process', level=1)
 doc.add_paragraph(
-    'The goal is to estimate, for an average dollar donated to GiveWell (GW), how many '
-    'life-years saved, YLDs averted, and income doublings are produced per $1M spent, '
-    'disaggregated across six time horizons (0-5, 5-10, 10-20, 20-100, 100-500, and 500+ years). '
-    'The pipeline has five main steps:'
+    'The goal is to estimate, for an average dollar donated by an Anthropic staff member '
+    'to GiveWell (GW), how many life-years saved, YLDs averted, and income doublings are '
+    'produced per $1M spent, disaggregated across six time horizons (0-5, 5-10, 10-20, '
+    '20-100, 100-500, and 500+ years). The pipeline has five main steps:'
 )
 steps = [
     'Estimate the number of units of value produced per $1M when GW\'s spending is 1x as cost-effective as its benchmark (i.e., equivalent to cash transfers). This is UNITS_VALUE_PER_M_PER_X_CASH.',

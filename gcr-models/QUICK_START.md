@@ -139,8 +139,8 @@ python run_analysis.py -n 10000
 - `downside` - Loss-averse
 - `combined` - Percentile weighting + loss aversion
 - `dmreu` - Difference-Making Risk-Weighted EU
-- `wlu_1`, `wlu_5`, `wlu_10` - Weighted Linear Utility
-- `ambig` - Ambiguity aversion
+- `wlu - low`, `wlu - moderate`, `wlu - high` - Weighted Linear Utility
+- `ambiguity` - Ambiguity aversion
 
 **Breakdowns**:
 - Total value (all time periods combined)

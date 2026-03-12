@@ -26,10 +26,13 @@ Usage:
 import argparse
 import csv
 import itertools
+import os
 import sys
 import time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import matplotlib.pyplot as plt
 
 import numpy as np
 
@@ -301,6 +304,7 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True):
         "horizon_data": horizon_data,
         "summary": summary,
         "sub_ext_rows": sub_ext_rows,
+        "total_per_1m": total_per_1m,
     }
 
 
@@ -446,6 +450,91 @@ def validate_output(output_path, n_funds, n_effect_rows, verbose=True):
 
 
 # ---------------------------------------------------------------------------
+# Histograms
+# ---------------------------------------------------------------------------
+
+def create_and_save_histograms(fund_results, output_dir, verbose=True):
+    """Save linear-scale and log-scale histograms for each fund's total QALYs/$1M."""
+    os.makedirs(output_dir, exist_ok=True)
+
+    for fr in fund_results:
+        project_id = fr["profile"]["export"]["project_id"]
+        display_name = fr["profile"]["display_name"]
+        samples = fr["total_per_1m"]
+
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        fig.suptitle(f"{display_name}\nTotal QALYs per $1M", fontsize=13)
+
+        # Linear scale
+        axes[0].hist(samples, bins=60, alpha=0.75, color="steelblue", edgecolor="none")
+        axes[0].set_xlabel("QALYs / $1M")
+        axes[0].set_ylabel("Frequency")
+        axes[0].set_title("Linear scale")
+        axes[0].axvline(float(np.mean(samples)), color="red", linestyle="--", linewidth=1.2, label=f"Mean = {np.mean(samples):.3g}")
+        axes[0].axvline(float(np.median(samples)), color="orange", linestyle="--", linewidth=1.2, label=f"Median = {np.median(samples):.3g}")
+        axes[0].legend(fontsize=9)
+
+        # Log scale (x-axis); drop non-positive values
+        pos = samples[samples > 0]
+        if len(pos) > 0:
+            log_bins = np.logspace(np.log10(np.percentile(pos, 1)), np.log10(np.percentile(pos, 99)), 60)
+            axes[1].hist(pos, bins=log_bins, alpha=0.75, color="steelblue", edgecolor="none")
+            axes[1].set_xscale("log")
+            axes[1].axvline(float(np.mean(pos)), color="red", linestyle="--", linewidth=1.2, label=f"Mean = {np.mean(pos):.3g}")
+            axes[1].axvline(float(np.median(pos)), color="orange", linestyle="--", linewidth=1.2, label=f"Median = {np.median(pos):.3g}")
+            axes[1].legend(fontsize=9)
+            pct_negative = 100 * np.sum(samples <= 0) / len(samples)
+            axes[1].set_title(f"Log scale (positive values only; {pct_negative:.1f}% ≤ 0 excluded)")
+        else:
+            axes[1].text(0.5, 0.5, "No positive values", ha="center", va="center", transform=axes[1].transAxes)
+            axes[1].set_title("Log scale")
+        axes[1].set_xlabel("QALYs / $1M")
+        axes[1].set_ylabel("Frequency")
+
+        plt.tight_layout()
+        out_path = os.path.join(output_dir, f"{project_id}_histogram.png")
+        plt.savefig(out_path, dpi=150)
+        plt.close()
+
+        if verbose:
+            print(f"  Saved histogram: {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# Summary statistics
+# ---------------------------------------------------------------------------
+
+def write_summary_statistics(fund_results, output_path, verbose=True):
+    """Write a CSV with per-fund summary statistics for total QALYs/$1M."""
+    percentiles = [1, 5, 10, 50, 90, 95, 99]
+    fieldnames = ["fund", "display_name", "n_samples", "mean"] + [f"p{p}" for p in percentiles]
+
+    rows = []
+    for fr in fund_results:
+        samples = fr["total_per_1m"]
+        row = {
+            "fund": fr["profile"]["export"]["project_id"],
+            "display_name": fr["profile"]["display_name"],
+            "n_samples": len(samples),
+            "mean": float(np.mean(samples)),
+        }
+        for p in percentiles:
+            row[f"p{p}"] = float(np.percentile(samples, p))
+        rows.append(row)
+
+    with open(output_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    if verbose:
+        print(f"\nSummary statistics written to: {output_path}")
+        for row in rows:
+            print(f"  {row['display_name']}: mean={row['mean']:.4g}, "
+                  f"p5={row['p5']:.4g}, p50={row['p50']:.4g}, p95={row['p95']:.4g}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
@@ -488,7 +577,16 @@ def main():
         for fr in fund_results
     )
     ok = validate_output(args.output, len(FUND_KEYS), n_effect_rows, verbose=verbose)
-    
+
+    # Histograms
+    hist_dir = str(Path(args.output).parent / "histograms")
+    print(f"\nCreating histograms in: {hist_dir}")
+    create_and_save_histograms(fund_results, hist_dir, verbose=verbose)
+
+    # Summary statistics
+    stats_output = str(Path(args.output).with_suffix("")) + "_summary_stats.csv"
+    write_summary_statistics(fund_results, stats_output, verbose=verbose)
+
     if not ok:
         print("\nExport completed with validation errors!")
         sys.exit(1)

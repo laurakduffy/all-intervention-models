@@ -186,19 +186,18 @@ def create_summary_statistics(effect_per_M_by_time):
 
     return summary_statistics
 
-def create_and_save_histograms(effect_per_M_by_time):
+def create_and_save_histograms(distribution_effect_by_type):
     # Create histograms directory if it doesn't exist
     os.makedirs('histograms', exist_ok=True)
-    
-    for effect_type in ['YLDs_averted', 'life_years_saved', 'income_doublings']:
-        for time_horizon in ['0-5 years', '5-10 years', '10-20 years', '20-100 years', '100-500 years', '500+ years']:
-            plt.hist(effect_per_M_by_time[effect_type][time_horizon], bins=30, alpha=0.7, label=f'{effect_type} - {time_horizon}')
-            plt.xlabel(f'{effect_type} per $1M')
-            plt.ylabel('Frequency')
-            plt.title(f'{effect_type} - {time_horizon}')
-            plt.legend()
-            plt.savefig(f'histograms/{effect_type}_{time_horizon}_histogram.png')
-            plt.close()
+
+    for effect_type in ['YLDs_averted', 'lives_saved', 'income_doublings']:
+        plt.hist(distribution_effect_by_type[effect_type], bins=30, alpha=0.7, label=effect_type)
+        plt.xlabel(f'{effect_type} per $1M')
+        plt.ylabel('Frequency')
+        plt.title(effect_type)
+        plt.legend()
+        plt.savefig(f'histograms/{effect_type}_histogram.png')
+        plt.close()
 
 
 # ============================================================================
@@ -301,21 +300,21 @@ def main():
     
     distribution_effect_by_type = get_distribution_effect_per_M(
         sample_effect_by_type, to_print=True)
-    
+
+    # Create histograms before splitting by time
+    print("\n2. Creating histograms...")
+    create_and_save_histograms(distribution_effect_by_type)
+    print("✓ Saved to: histograms/ directory")
+
     effect_per_M_by_time = get_effect_per_M_by_time(
         distribution_effect_by_type, temporal_breakdown_by_type_dict, to_print=True)
-    
+
     effect_per_M_by_time = convert_lives_saved_to_life_years_saved(effect_per_M_by_time)
-    
+
     # Create summary statistics (original code)
-    print("\n2. Creating summary statistics...")
+    print("\n3. Creating summary statistics...")
     summary_statistics = create_summary_statistics(effect_per_M_by_time)
     print("✓ Saved to: summary_statistics.csv")
-    
-    # Create histograms (original code)
-    print("\n3. Creating histograms...")
-    create_and_save_histograms(effect_per_M_by_time)
-    print("✓ Saved to: histograms/ directory")
     
     # Apply risk adjustments (NEW)
     risk_adjusted_df = apply_risk_adjustments_to_simulations(effect_per_M_by_time)
