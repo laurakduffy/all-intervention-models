@@ -20,7 +20,7 @@ PROJECT_METADATA = {
     "sentinel_bio": {"name": "Biorisk fund (Sentinel bio)", "color": "#85E4FF"},
     "longview_nuclear": {"name": "Nuclear fund (Longview)", "color": "#e74c3c"},
     "longview_ai": {"name": "AI fund (Longview)", "color": "#85E4FF"},
-    "aw_combined": {"name": "Animal Welfare fund (combined)", "color": "#85E4FF"}
+    "animal_welfare_funds": {"name": "Animal Welfare fund (combined)", "color": "#85E4FF"}
 }
 
 RISK_PROFILES = [
@@ -33,6 +33,30 @@ RISK_PROFILES = [
     'combined',        # Maps to 6: Combined
     'ambiguity'        # Maps to 7: Continuous Upside Sceptical 
 ]
+
+EFFECT_KEY_MAP = {
+    'life_years_saved': 'effect_lives_saved',
+    'YLDs_averted': 'effect_disability_reduction',
+    'income_doublings': 'effect_income',
+}
+
+RECIPIENT_TYPE_MAP = {
+    'life_years': 'human_life_years',
+    'ylds': 'human_ylds',
+    'income_doublings': 'human_income_doublings',
+    'birds': 'chickens_birds',
+}
+
+RECIPIENT_TYPE_OVERRIDES_BY_EFFECT = {
+    'movement_building': 'chickens_birds',
+    'policy_advocacy_multi_species': 'chickens_birds',
+    'wild_animal_welfare': 'non_shrimp_invertebrates',
+}
+
+NEAR_TERM_XRISK_OVERRIDES = {
+    'sentinel_bio': False,
+    'longview_nuclear': False,
+}
 
 # Mapping standard time suffixes (t0-t5) to the AW time suffixes (0_to_5, etc.)
 TIME_MAPPINGS = [
@@ -99,6 +123,8 @@ def parse_effects(df):
         pid = FUND_NAME_MAP.get(raw_pid, raw_pid)
         effect_id = row.get('effect_id')
         recipient_type = row.get('recipient_type')
+        recipient_type = RECIPIENT_TYPE_OVERRIDES_BY_EFFECT.get(effect_id, RECIPIENT_TYPE_MAP.get(recipient_type, recipient_type))
+        effect_id = EFFECT_KEY_MAP.get(effect_id, effect_id)
         
         near_term = row.get('near_term_xrisk', False)
         if pd.isna(near_term): 
@@ -111,7 +137,7 @@ def parse_effects(df):
             effects_dict[pid] = {
                 "name": meta["name"],
                 "color": meta["color"],
-                "tags": {"near_term_xrisk": bool(near_term)},
+                "tags": {"near_term_xrisk": NEAR_TERM_XRISK_OVERRIDES.get(pid, bool(near_term))},
                 "diminishing_returns": [], # Will populate in main execution
                 "effects": {}
             }
@@ -148,10 +174,11 @@ projects_data = parse_effects(risk_scores_df)
 for pid in projects_data:
     projects_data[pid]["diminishing_returns"] = dim_returns_data.get(pid, [])
 
-# Sentinel bio sub-funds share the same diminishing returns as sentinel_bio
-for pid in ('sentinel_bio_10m_100m', 'sentinel_bio_100m_1b'):
-    if pid in projects_data:
-        projects_data[pid]["diminishing_returns"] = dim_returns_data.get('sentinel_bio', [])
+# Merge sentinel_bio sub-fund effects into sentinel_bio, then remove sub-fund projects
+for sub_pid in ('sentinel_bio_100m_1b', 'sentinel_bio_10m_100m'):
+    if sub_pid in projects_data and 'sentinel_bio' in projects_data:
+        projects_data['sentinel_bio']['effects'].update(projects_data[sub_pid]['effects'])
+        del projects_data[sub_pid]
 
 now = datetime.now()
 final_json_structure = {

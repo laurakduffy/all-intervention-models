@@ -4,7 +4,6 @@ Based on Tarsney's "Epistemic Challenge to Longtermism" (2020).
 Computes the expected value of interventions that reduce catastrophic risk,
 accounting for both near-term and long-term (including stellar expansion) value.
 
-Originally extracted from a Jupyter notebook implementation and parameterized for reuse.
 """
 
 import itertools
@@ -43,7 +42,7 @@ class GCRParams:
     # If set, overrides bp_reduction_per_bn: specifies the absolute peak
     # annual risk reduction from the intervention (independent of baseline risk).
     abs_risk_reduction: np.ndarray = None
-    # Option A parameterisation (preferred): sweep the fractional reduction of
+    # Parameterisation: sweep the fractional reduction of
     # cause-specific r_max independently of total cumulative risk.
     # rel_risk_reduction: fraction of cause-specific r_max removed (e.g. 0.001).
     # cause_fraction: share of total x-risk attributable to this cause.
@@ -60,7 +59,7 @@ class GCRParams:
     cubic_growth: np.ndarray = None
     T_c: np.ndarray = None
     r_g: float = 1.3e5  # radius of milky way in ly
-    s: np.ndarray = None
+    s: np.ndarray = None # speed of settlement in ly/yr (fractions speed of light)
     d_g: float = 2.2e-5 # Density stars in MW galaxy See page 19 of Tarsney (2020), unit: stars/ly^3
     d_s: float = 2.9e-9 # Density stars in virgo supercluster. See page 19 of Tarsney (2020), unit: stars/ly^3
 
@@ -98,8 +97,9 @@ def _solve_r_max(cumulative_risk, year_max_risk, year_risk_1pct_max, r_inf, n_ye
     hi = np.ones(n)
     for _ in range(60):  # 2^-60 ≈ 1e-18 precision
         mid = 0.5 * (lo + hi)
-        hi = np.where(_cum(mid) < cumulative_risk, hi, mid)
-        lo = np.where(_cum(mid) < cumulative_risk, mid, lo)
+        cum_mid = _cum(mid)
+        hi = np.where(cum_mid < cumulative_risk, hi, mid)
+        lo = np.where(cum_mid < cumulative_risk, mid, lo)
     return 0.5 * (lo + hi)
 
 
@@ -126,7 +126,7 @@ class GCRModel:
         )
         self.sd_risk = p.year_risk_1pct_max / 3
         if p.rel_risk_reduction is not None:
-            # Option A: rel_risk_reduction is independent of cumulative_risk_100_yrs.
+            # rel_risk_reduction is independent of cumulative_risk_100_yrs.
             # cause_fraction converts cause-specific to total-risk fraction.
             self.rel_rr_from_int = p.rel_risk_reduction * p.cause_fraction
         elif p.abs_risk_reduction is not None:
@@ -437,40 +437,6 @@ class GCRModel:
             "value_array": value_array,
             "y_const_value": y_const_value,
         }
-
-
-def ev_sub_extinction_tier(
-    p_event_annual,
-    expected_deaths,
-    rel_risk_reduction,
-    persistence_years,
-    counterfactual_factor,
-    dalys_per_death=1,
-):
-    """Simple expected-value model for recoverable catastrophes (sub-extinction).
-
-    For events where civilization recovers, the full Tarsney framework (permanent
-    loss of future value) doesn't apply. Instead we compute direct expected
-    deaths averted.
-
-    Args:
-        p_event_annual: Annual probability of the catastrophe occurring.
-        expected_deaths: Expected deaths conditional on the event.
-        rel_risk_reduction: Fractional reduction in event probability (0 to 1).
-        persistence_years: How many years the risk reduction persists.
-        counterfactual_factor: Fraction of impact that is counterfactual (0 to 1).
-        dalys_per_death: DALYs per statistical death (default 1 = lives-equivalent).
-
-    Returns:
-        Total expected deaths averted (× dalys_per_death) over the persistence period.
-    """
-    annual_deaths_averted = (
-        p_event_annual
-        * expected_deaths
-        * rel_risk_reduction
-        * counterfactual_factor
-    )
-    return annual_deaths_averted * persistence_years * dalys_per_death
 
 
 # Constants for run_monte_carlo

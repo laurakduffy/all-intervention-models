@@ -2,7 +2,7 @@
 
 Produces an RP-format CSV with two sections:
   1. Diminishing returns: marginal CE multiplier at $10M..$900M steps
-  2. Effects at time horizon: QALYs/$1M by period and risk profile
+  2. Effects at time horizon: human life years/$1M by period and risk profile
 
 All 7 risk profiles (based on RP distribution-fitting methodology):
 
@@ -37,7 +37,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from fund_profiles import get_fund_profile
-from gcr_model import ev_sub_extinction_tier, run_monte_carlo
+from gcr_model import run_monte_carlo
 from risk_profiles import compute_risk_profiles
 
 # ---------------------------------------------------------------------------
@@ -111,14 +111,6 @@ def compute_diminishing_row(budget_m, anchors):
         return [0.0] * len(raw)
     return [v / base for v in raw]
 
-
-# ---------------------------------------------------------------------------
-# Risk-adjusted expected values
-# ---------------------------------------------------------------------------
-
-
-
-
 # ---------------------------------------------------------------------------
 # Sub-extinction tiers (simple EV model)
 # ---------------------------------------------------------------------------
@@ -137,6 +129,7 @@ def _years_in_period(persistence, start, end):
 def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
     """Compute sub-extinction effect rows using Monte Carlo sampling with stratification."""
     p_harm = profile.get("p_harm", 0.0)
+    harm_multiplier = profile.get("harm_multiplier", 1.0)
     tiers = profile.get("sub_extinction_tiers", [])
     if not tiers:
         return []
@@ -193,7 +186,7 @@ def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
             * adj * discount
         )
         
-        annual_evs = np.where(shared_causes_harm, -annual_evs, annual_evs)
+        annual_evs = np.where(shared_causes_harm, -annual_evs * harm_multiplier, annual_evs)
         
         horizon_data = {}
         for pk, (t_start, t_end) in zip(all_pk, _PERIOD_BOUNDS):
@@ -224,6 +217,7 @@ def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
                 "tier_name": tier["tier_name"],
             },
             "horizon_data": horizon_data,
+            "total_per_1m": total_per_1m,
         })
 
     return rows
@@ -285,12 +279,12 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True):
     }
 
     if verbose:
-        print(f"  Total QALYs/$1M (informal):  "
+        print(f"  Total human life years/$1M (informal):  "
               f"neutral={total_profiles['neutral']:.4g}  "
               f"upside={total_profiles['upside']:.4g}  "
               f"downside={total_profiles['downside']:.4g}  "
               f"combined={total_profiles['combined']:.4g}")
-        print(f"  Total QALYs/$1M (formal):    "
+        print(f"  Total human life years/$1M (formal):    "
               f"dmreu={total_profiles['dmreu']:.4g}  "
               f"wlu low={total_profiles['wlu - low']:.4g}  "
               f"wlu mod={total_profiles['wlu - moderate']:.4g}  "
@@ -324,7 +318,7 @@ def _pad(row):
 
 
 def _fmt(v):
-    """Format a QALY value for CSV (4 significant figures)."""
+    """Format a human life years value for CSV (4 significant figures)."""
     return f"{v:.4g}"
 
 def write_diminishing_returns_csv(fund_results, output_path, verbose=True):
@@ -457,11 +451,7 @@ def create_and_save_histograms(fund_results, output_dir, verbose=True):
     """Save linear-scale and log-scale histograms for each fund's total QALYs/$1M."""
     os.makedirs(output_dir, exist_ok=True)
 
-    for fr in fund_results:
-        project_id = fr["profile"]["export"]["project_id"]
-        display_name = fr["profile"]["display_name"]
-        samples = fr["total_per_1m"]
-
+    def _save_histogram(project_id, display_name, samples):
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         fig.suptitle(f"{display_name}\nTotal QALYs per $1M", fontsize=13)
 
@@ -499,6 +489,19 @@ def create_and_save_histograms(fund_results, output_dir, verbose=True):
         if verbose:
             print(f"  Saved histogram: {out_path}")
 
+    for fr in fund_results:
+        _save_histogram(
+            fr["profile"]["export"]["project_id"],
+            fr["profile"]["display_name"],
+            fr["total_per_1m"],
+        )
+        for sub in fr.get("sub_ext_rows", []):
+            _save_histogram(
+                sub["export_meta"]["effect_id"],
+                sub["export_meta"]["tier_name"],
+                sub["total_per_1m"],
+            )
+
 
 # ---------------------------------------------------------------------------
 # Summary statistics
@@ -507,20 +510,35 @@ def create_and_save_histograms(fund_results, output_dir, verbose=True):
 def write_summary_statistics(fund_results, output_path, verbose=True):
     """Write a CSV with per-fund summary statistics for total QALYs/$1M."""
     percentiles = [1, 5, 10, 50, 90, 95, 99]
-    fieldnames = ["fund", "display_name", "n_samples", "mean"] + [f"p{p}" for p in percentiles]
+    fieldnames = ["fund", "display_name", "tier_name", "n_samples", "mean"] + [f"p{p}" for p in percentiles]
 
-    rows = []
-    for fr in fund_results:
-        samples = fr["total_per_1m"]
+    def _make_row(fund_id, display_name, tier_name, samples):
         row = {
-            "fund": fr["profile"]["export"]["project_id"],
-            "display_name": fr["profile"]["display_name"],
+            "fund": fund_id,
+            "display_name": display_name,
+            "tier_name": tier_name,
             "n_samples": len(samples),
             "mean": float(np.mean(samples)),
         }
         for p in percentiles:
             row[f"p{p}"] = float(np.percentile(samples, p))
-        rows.append(row)
+        return row
+
+    rows = []
+    for fr in fund_results:
+        rows.append(_make_row(
+            fr["profile"]["export"]["project_id"],
+            fr["profile"]["display_name"],
+            "",
+            fr["total_per_1m"],
+        ))
+        for sub in fr.get("sub_ext_rows", []):
+            rows.append(_make_row(
+                sub["export_meta"]["project_id"],
+                sub["export_meta"]["tier_name"],
+                sub["export_meta"]["tier_name"],
+                sub["total_per_1m"],
+            ))
 
     with open(output_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -530,7 +548,8 @@ def write_summary_statistics(fund_results, output_path, verbose=True):
     if verbose:
         print(f"\nSummary statistics written to: {output_path}")
         for row in rows:
-            print(f"  {row['display_name']}: mean={row['mean']:.4g}, "
+            label = f"{row['display_name']}" + (f" [{row['tier_name']}]" if row["tier_name"] else "")
+            print(f"  {label}: mean={row['mean']:.4g}, "
                   f"p5={row['p5']:.4g}, p50={row['p50']:.4g}, p95={row['p95']:.4g}")
 
 

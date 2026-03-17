@@ -64,15 +64,15 @@ summarize_array(sample_units_value_per_M)
 ## See here: https://docs.google.com/spreadsheets/d/1cKN0tWL-76SmElE5N4F7xaySzUQ_bU24ZbN64ObUIRw/edit?gid=0#gid=0&range=A1:B1
 percent_effect_by_type_dict = {
     'Malaria prevention and treatment': 
-        {'YLDs_averted': 0.142, 'lives_saved': 0.583, 'income_doublings': 0.274},
+        {'YLDs_averted': 0.145, 'lives_saved': 0.459, 'income_doublings': 0.396},
     'Vaccinations': 
-        {'YLDs_averted': 0.067, 'lives_saved': 0.709, 'income_doublings': 0.224},
+        {'YLDs_averted': 0.050, 'lives_saved': 0.623, 'income_doublings': 0.327},
     'Malnutrition treatment': 
-        {'YLDs_averted': 0.039, 'lives_saved': 0.800, 'income_doublings': 0.161},
+        {'YLDs_averted': 0.033, 'lives_saved': 0.767, 'income_doublings': 0.200},
     'Water quality': 
         {'YLDs_averted': 0.028, 'lives_saved': 0.665, 'income_doublings': 0.307},
     'VAS': 
-        {'YLDs_averted': 0.164, 'lives_saved': 0.668, 'income_doublings': 0.167},
+        {'YLDs_averted': 0.144, 'lives_saved': 0.491, 'income_doublings': 0.365},
     'Iron fortification': 
         {'YLDs_averted': 0.580, 'lives_saved': 0.000, 'income_doublings': 0.420},
     'Livelihood programs': 
