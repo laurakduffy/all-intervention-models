@@ -1,4 +1,4 @@
-"""Extract CCM intervention estimates: percentiles and samples.
+"""Intervention estimates: percentiles and samples.
 
 Partially replicates the distribution parameters from the CCM repo
 (rethinkpriorities/cross-cause-cost-effectiveness-model-public)
@@ -15,12 +15,12 @@ This script samples those distributions and writes:
 This eliminates the need for distribution fitting from percentiles, avoiding
 information loss and fitting errors.
 
-The CCM outputs are in "suffering-years averted per $1000" which is the
+The outputs are in "suffering-years averted per $1000" which is the
 pre-moral-weight unit. Moral weight conversion happens downstream.
 
 Run:
     source ../../test_env/bin/activate  (or ../test_env depending on cwd)
-    python ccm_extract.py
+    python aw_intervention_models.py
 """
 
 import numpy as np
@@ -418,7 +418,7 @@ yaml.add_representer(float, represent_float)
 
 # ── Write primary outputs ──
 
-output_path = os.path.join(os.path.dirname(__file__), "ccm_intervention_estimates.yaml")
+output_path = os.path.join(os.path.dirname(__file__), "aw_model_intervention_estimates.yaml")
 with open(output_path, "w") as f:
     yaml.dump(output, f, default_flow_style=False, sort_keys=False, width=120)
 
@@ -428,7 +428,7 @@ print(f"Wrote {output_path}")
 samples_dir = os.path.join(os.path.dirname(__file__), "samples")
 os.makedirs(samples_dir, exist_ok=True)
 
-samples_npz_path = os.path.join(samples_dir, "ccm_intervention_samples_100k.npz")
+samples_npz_path = os.path.join(samples_dir, "aw_model_intervention_samples_100k.npz")
 np.savez_compressed(
     samples_npz_path,
     chicken_corporate_campaigns=chicken_sy_per_1000,
@@ -504,7 +504,7 @@ for intervention_key, samples in intervention_samples.items():
     print(f"    Range: [{ext_stats['p0_15']:,.0f}, {ext_stats['p99_85']:,.0f}]")
 
 # Write extended statistics CSV
-csv_path = os.path.join(outputs_dir, "ccm_extended_statistics.csv")
+csv_path = os.path.join(outputs_dir, "aw_model_extended_statistics.csv")
 csv_fieldnames = [
     "intervention", "description", "mean",
     "p0_15", "p1", "p2_5", "p10", "p50", "p90", "p97_5", "p99", "p99_85"

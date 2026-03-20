@@ -1,10 +1,10 @@
 """Generate a Word (.docx) technical documentation of the CCM extraction methodology.
 
-Documents the methodology in ccm_extract.py: how intervention cost-effectiveness
+Documents the methodology in aw_intervention_models.py: how intervention cost-effectiveness
 distributions are constructed, what data sources are used, and how the output
 YAML / NPZ files are structured for use in the AW model pipeline.
 
-Pulls parameter values from ccm_intervention_estimates.yaml to stay in sync.
+Pulls parameter values from aw_model_intervention_estimates.yaml to stay in sync.
 """
 
 import os
@@ -25,7 +25,7 @@ OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "CCM_EXTRACT
 # Load CCM YAML to pull live values
 # ---------------------------------------------------------------------------
 
-_CCM_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ccm_intervention_estimates.yaml")
+_CCM_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aw_model_intervention_estimates.yaml")
 
 with open(_CCM_PATH) as f:
     _CCM = yaml.safe_load(f)
@@ -139,7 +139,7 @@ run.font.color.rgb = RGBColor(0x32, 0x5A, 0xA0)
 
 p = doc.add_paragraph()
 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-run = p.add_run("Generated from ccm_extract.py and ccm_intervention_estimates.yaml")
+run = p.add_run("Generated from aw_intervention_models.py and aw_model_intervention_estimates.yaml")
 run.font.size = Pt(9)
 run.font.italic = True
 run.font.color.rgb = RGBColor(0x78, 0x78, 0x78)
@@ -151,7 +151,7 @@ doc.add_paragraph()
 # ---------------------------------------------------------------------------
 add_heading(doc, "1.  Purpose and framing", 1)
 add_body(doc,
-    "This document describes the methodology behind ccm_extract.py, which produces "
+    "This document describes the methodology behind aw_intervention_models.py, which produces "
     "the cost-effectiveness distribution inputs for Rethink Priorities' animal welfare "
     "intervention model."
 )
@@ -168,7 +168,7 @@ add_body(doc,
     "welfare interventions. For some interventions the CCM's own distribution parameters "
     "are used directly; for others, analyst estimates are substituted where the CCM does "
     "not have a corresponding model. Full derivations for analyst estimates are documented "
-    "in the linked Google Doc (see ccm_extract.py header)."
+    "in the linked Google Doc (see aw_intervention_models.py header)."
 )
 add_note(doc,
     f"Unit: all outputs are in suffering-years averted per $1,000 spent on the intervention "
@@ -182,26 +182,26 @@ add_note(doc,
 # 2. Output files
 # ---------------------------------------------------------------------------
 add_heading(doc, "2.  Output files", 1)
-add_body(doc, "ccm_extract.py produces three outputs:")
+add_body(doc, "aw_intervention_models.py produces three outputs:")
 add_bullet(doc,
-    "  ccm_intervention_estimates.yaml — percentile summaries (p1/p5/p10/p50/p90/p95/p99/mean) "
+    "  aw_model_intervention_estimates.yaml — percentile summaries (p1/p5/p10/p50/p90/p95/p99/mean) "
     "and 10,000 downsampled empirical samples per intervention.",
     bold_prefix="YAML.")
 add_bullet(doc,
-    "  samples/ccm_intervention_samples_100k.npz — full 100,000 samples per intervention, "
+    "  samples/aw_model_intervention_samples_100k.npz — full 100,000 samples per intervention, "
     "compressed. Used by the AW model pipeline for maximum accuracy.",
     bold_prefix="NPZ.")
 add_bullet(doc,
-    "  outputs/ccm_extended_statistics.csv — extended percentile summary (0.15th to 99.85th) "
+    "  outputs/aw_model_extended_statistics.csv — extended percentile summary (0.15th to 99.85th) "
     "and histograms for QC purposes.",
     bold_prefix="CSV + histograms.")
 
 add_table(doc,
     ["File", "Samples per intervention", "Primary use"],
     [
-        ["ccm_intervention_estimates.yaml", "10,000 (downsampled)", "Human-readable percentiles; fallback for model pipeline"],
-        ["ccm_intervention_samples_100k.npz", "100,000 (full)", "Primary input to AW model pipeline"],
-        ["ccm_extended_statistics.csv", "Summary stats only", "QC and documentation"],
+        ["aw_model_intervention_estimates.yaml", "10,000 (downsampled)", "Human-readable percentiles; fallback for model pipeline"],
+        ["aw_model_intervention_samples_100k.npz", "100,000 (full)", "Primary input to AW model pipeline"],
+        ["aw_model_extended_statistics.csv", "Summary stats only", "QC and documentation"],
     ],
 )
 

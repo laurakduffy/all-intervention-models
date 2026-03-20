@@ -28,7 +28,7 @@ def _load_yaml(path):
     with open(path) as f:
         return yaml.safe_load(f)
 
-_ccm = _load_yaml(os.path.join(_DATA_DIR, "ccm_intervention_estimates.yaml"))
+_ccm = _load_yaml(os.path.join(_DATA_DIR, "aw_model_intervention_estimates.yaml"))
 _combined = _load_yaml(os.path.join(_DATA_DIR, "funds", "aw_combined.yaml"))["fund"]
 _ea_awf   = _load_yaml(os.path.join(_DATA_DIR, "funds", "ea_awf.yaml"))["fund"]
 

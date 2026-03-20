@@ -4,13 +4,13 @@ Produces an RP-format CSV with two sections:
   1. Diminishing returns: marginal CE multiplier at $10M..$900M steps
   2. Effects at time horizon: human life years/$1M by period and risk profile
 
-All 7 risk profiles (based on RP distribution-fitting methodology):
+All risk profiles:
 
   Informal adjustments:
     neutral  = risk-neutral expected value (mean)
     upside   = upside skepticism — truncate upper tail at p99, renormalise
     downside = downside protection — loss-averse utility (lambda=2.5, ref=median)
-    combined = percentile-based weighting + loss aversion (NEW)
+    combined = percentile-based weighting + loss aversion 
 
   Formal models (Duffy 2023):
     dmreu    = Difference-Making Risk-Weighted EU (p=0.05, moderate aversion)
@@ -18,7 +18,7 @@ All 7 risk profiles (based on RP distribution-fitting methodology):
     ambiguity — Ambiguity Aversion with new percentile-based weighting (97.5-99.9% decay to 1% weight, above 99.9% zero weight)
 
 Usage:
-    python export_rp_csv.py                  # default output: rp_output.csv
+    python export_rp_csv.py                  # default output: gcr_output.csv
     python export_rp_csv.py -o my_output.csv
     python export_rp_csv.py --batch-size 2000 --quiet
 """
@@ -36,7 +36,7 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
-from fund_profiles import get_fund_profile
+from fund_profiles import get_fund_profile, YEARS_LOOK_AHEAD
 from gcr_model import run_monte_carlo
 from risk_profiles import compute_risk_profiles
 
@@ -179,7 +179,7 @@ def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
 
     for tier in tiers:
         p_annual = 1 - (1 - tier["p_10yr"]) ** (1 / 10)
-        discount = tier.get("natural_pandemic_discount", 1.0)
+        discount = tier.get("discount", 1.0)
 
         annual_evs = (
             p_annual * tier["expected_deaths"] * rel_rr_samples
@@ -561,8 +561,8 @@ def main():
         description="Export RP-style CSV for all GCR fund profiles (Monte Carlo)."
     )
     parser.add_argument(
-        "-o", "--output", default="rp_output.csv",
-        help="Output CSV path for effects (default: rp_output.csv). Diminishing returns will be saved to *_diminishing_returns.csv",
+        "-o", "--output", default="gcr_output.csv",
+        help="Output CSV path for effects (default: gcr_output.csv). Diminishing returns will be saved to diminishing_returns/gcr_diminishing_returns_{N}yr.csv",
     )
     parser.add_argument(
         "--n-samples", type=int, default=100000,
@@ -588,7 +588,9 @@ def main():
     write_rp_csv(fund_results, args.output, verbose=verbose)
     
     # Write separate diminishing returns CSV
-    dr_output = args.output.replace('.csv', '_diminishing_returns.csv')
+    dr_dir = Path(args.output).parent / "diminishing_returns"
+    dr_dir.mkdir(exist_ok=True)
+    dr_output = str(dr_dir / f"gcr_diminishing_returns_{YEARS_LOOK_AHEAD}yr.csv")
     write_diminishing_returns_csv(fund_results, dr_output, verbose=verbose)
 
     n_effect_rows = sum(

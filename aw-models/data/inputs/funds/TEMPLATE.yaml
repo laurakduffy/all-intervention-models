@@ -4,11 +4,11 @@
 #   1. Copy this file to <fund_name>.yaml (e.g. navigation_fund.yaml)
 #   2. Fill in project_id, display_name, annual_budget_M
 #   3. Set splits — these must be decimal fractions that sum to ~1.0
-#      Each key must match an intervention name in ccm_intervention_estimates.yaml
+#      Each key must match an intervention name in aw_model_intervention_estimates.yaml
 #   4. Optionally set diminishing_anchors (cumulative $M → CE multiplier)
 #   5. Run: python run.py --fund <fund_name>
 #
-# Available intervention keys (from ccm_intervention_estimates.yaml):
+# Available intervention keys (from aw_model_intervention_estimates.yaml):
 #   - chicken_corporate_campaigns
 #   - shrimp_welfare
 #   - fish_welfare

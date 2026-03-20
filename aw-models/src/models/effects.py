@@ -1,7 +1,7 @@
 """Effect engine: CCM intervention estimates + fund allocation splits.
 
 Loads pre-computed cost-effectiveness distributions from the CCM extraction
-(ccm_intervention_estimates.yaml) and fund-specific budget splits from
+(aw_model_intervention_estimates.yaml) and fund-specific budget splits from
 per-fund YAML files (data/inputs/funds/<fund_id>.yaml).
 
 For each intervention in the fund's split, produces an effect dict with
@@ -18,7 +18,7 @@ _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "inputs"
 def load_ccm_estimates(path=None):
     """Load CCM intervention estimates YAML."""
     if path is None:
-        path = os.path.join(_DATA_DIR, "ccm_intervention_estimates.yaml")
+        path = os.path.join(_DATA_DIR, "aw_model_intervention_estimates.yaml")
     with open(path) as f:
         return yaml.safe_load(f)
 
@@ -30,7 +30,7 @@ def load_full_samples(path=None):
     or None if file doesn't exist.
     """
     if path is None:
-        path = os.path.join(_DATA_DIR, "samples", "ccm_intervention_samples_100k.npz")
+        path = os.path.join(_DATA_DIR, "samples", "aw_model_intervention_samples_100k.npz")
     
     if not os.path.exists(path):
         return None

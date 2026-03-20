@@ -7,6 +7,8 @@ import json
 import math
 import pandas as pd
 
+from combine_data import DIMINISHING_RETURNS_YRS
+
 TOLERANCE = 1e-6  # relative tolerance for float comparisons
 
 RISK_PROFILES = [
@@ -110,9 +112,9 @@ def validate_diminishing_returns(projects):
 
     # Load source files the same way combine_data.py does
     source_dfs = [
-        pd.read_csv('gw-models/givewell_diminishing_returns.csv'),
-        pd.read_csv('aw-models/outputs/aw_combined_diminishing_returns.csv'),
-        pd.read_csv('gcr-models/rp_output_diminishing_returns.csv'),
+        pd.read_csv('gw-models/givewell_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS)),
+        pd.read_csv('aw-models/outputs/aw_combined_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS)),
+        pd.read_csv('gcr-models/diminishing_returns/gcr_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS)),
     ]
     combined = pd.concat(source_dfs, ignore_index=True)
 
@@ -137,7 +139,11 @@ def validate_diminishing_returns(projects):
         out_pid = FUND_NAME_MAP.get(pid, pid)
         expected[out_pid] = vals
 
-    DR_SKIP = {'sentinel_bio_10m_100m', 'sentinel_bio_100m_1b'}
+    DR_SKIP = {
+        'sentinel_bio_100m_1b', 'sentinel_bio_10m_100m',
+        'longview_nuclear_100m_1b', 'longview_nuclear_10m_100m',
+        'longview_ai_100m_1b', 'longview_ai_10m_100m',
+    }
 
     for pid, proj in projects.items():
         if pid in DR_SKIP:

@@ -501,24 +501,27 @@ _add_fund_section(doc, "sentinel")
 
 add_heading(doc, "Sub-extinction tiers", 3)
 add_body(doc,
-    "Sentinel Bio is the only fund with sub-extinction modelling (recoverable catastrophes). "
+    "All three funds include sub-extinction modelling (recoverable catastrophes). "
     "Two tiers use the simple EV formula: P(event/yr) * deaths * rel_rr * persistence * counterfactual."
 )
-_tiers = FUND_PROFILES["sentinel"]["sub_extinction_tiers"]
-add_table(doc,
-    ["Tier", "P(event/10yr)", "Expected deaths", "natural_pandemic_discount"],
-    [
+for _sub_fund_key in ("sentinel", "longview_nuclear", "longview_ai"):
+    _tiers = FUND_PROFILES[_sub_fund_key].get("sub_extinction_tiers", [])
+    if not _tiers:
+        continue
+    add_heading(doc, FUND_PROFILES[_sub_fund_key]["display_name"], 4)
+    add_table(doc,
+        ["Tier", "P(event/10yr)", "Expected deaths", "discount"],
         [
-            t["tier_name"],
-            fmt_pct(t["p_10yr"], 0),
-            f"{t['expected_deaths'] / 1e6:.1f}M (geomean of tier bounds)",
-            f"{t['natural_pandemic_discount']} -- "
-            + ("no discount (engineered bio focus)" if t["natural_pandemic_discount"] == 1.0
-               else "Sentinel focuses on engineered bio"),
-        ]
-        for t in _tiers
-    ],
-)
+            [
+                t["tier_name"],
+                fmt_pct(t["p_10yr"], 0),
+                f"{t['expected_deaths'] / 1e6:.1f}M (geomean of tier bounds)",
+                f"{t['discount']:.2g} -- "
+                + ("no discount" if t["discount"] == 1.0 else f"{fmt_pct(1 - t['discount'], 0)} discount"),
+            ]
+            for t in _tiers
+        ],
+    )
 
 # --- Longview Nuclear ---
 add_heading(doc, "5.2  Longview Nuclear", 2)

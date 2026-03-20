@@ -6,16 +6,16 @@ By default, the workflow uses **full 100k samples** from the original CCM genera
 
 ## How It Works
 
-### Data Generation (ccm_extract.py)
+### Data Generation (aw_intervention_models.py)
 
-When you run `ccm_extract.py`, it generates **three** outputs:
+When you run `aw_intervention_models.py`, it generates **three** outputs:
 
-1. **YAML with 10k samples** (`ccm_intervention_estimates.yaml`)
+1. **YAML with 10k samples** (`aw_model_intervention_estimates.yaml`)
    - Human-readable format
    - Contains percentiles + downsampled 10k samples
    - Size: ~850 KB
 
-2. **Binary .npz with 100k samples** (`samples/ccm_intervention_samples_100k.npz`)
+2. **Binary .npz with 100k samples** (`samples/aw_model_intervention_samples_100k.npz`)
    - Compressed numpy format
    - Contains full 100k samples per intervention
    - Size: ~5.1 MB
@@ -37,7 +37,7 @@ When `run.py` executes, the pipeline loads data in this order:
 ```bash
 # Generate data with full samples
 cd data/inputs
-python ccm_extract.py
+python aw_intervention_models.py
 
 # Run pipeline - automatically uses full 100k samples
 cd ../..
@@ -95,13 +95,13 @@ The accuracy difference is minimal for most use cases, but 100k is more "correct
 ```
 data/
 ├── inputs/
-│   ├── ccm_extract.py
-│   ├── ccm_intervention_estimates.yaml     [850 KB, 10k samples]
+│   ├── aw_intervention_models.py
+│   ├── aw_model_intervention_estimates.yaml     [850 KB, 10k samples]
 │   └── samples/                            [NEW]
-│       └── ccm_intervention_samples_100k.npz  [5.1 MB, 100k samples]
+│       └── aw_model_intervention_samples_100k.npz  [5.1 MB, 100k samples]
 │
 └── outputs/
-    ├── ccm_extended_statistics.csv
+    ├── aw_model_extended_statistics.csv
     └── histograms/
 ```
 
@@ -128,7 +128,7 @@ The `.npz` file contains:
 def load_full_samples(path=None):
     """Load full 100k samples from .npz file if available."""
     if path is None:
-        path = os.path.join(_DATA_DIR, "samples", "ccm_intervention_samples_100k.npz")
+        path = os.path.join(_DATA_DIR, "samples", "aw_model_intervention_samples_100k.npz")
     
     if not os.path.exists(path):
         return None  # Fall back to YAML samples
@@ -199,7 +199,7 @@ The output CSV has a `data_source` column:
 You can delete the `.npz` file and the pipeline will automatically fall back to 10k samples:
 
 ```bash
-rm data/inputs/samples/ccm_intervention_samples_100k.npz
+rm data/inputs/samples/aw_model_intervention_samples_100k.npz
 ```
 
 The pipeline continues working with minimal accuracy loss (~0.2% difference in risk profiles).
@@ -209,7 +209,7 @@ The pipeline continues working with minimal accuracy loss (~0.2% difference in r
 To regenerate with full samples:
 ```bash
 cd data/inputs
-python ccm_extract.py  # Creates both YAML and .npz
+python aw_intervention_models.py  # Creates both YAML and .npz
 ```
 
 ## Performance Impact
@@ -229,7 +229,7 @@ The performance difference is minimal. The extra accuracy is worth it for produc
 **A**: YAML file would be 85 MB (100x larger), slow to parse, and hard to inspect.
 
 **Q: Can I use more than 100k samples?**  
-**A**: Yes! Edit `N = 100_000` in `ccm_extract.py` to any value. Diminishing returns beyond 100k.
+**A**: Yes! Edit `N = 100_000` in `aw_intervention_models.py` to any value. Diminishing returns beyond 100k.
 
 **Q: What about 1 million samples?**  
 **A**: Possible but unnecessary. 100k captures distribution to 0.001% precision, which exceeds model uncertainty.
@@ -258,11 +258,11 @@ The performance difference is minimal. The extra accuracy is worth it for produc
 ### "Full samples not found" warning
 ```bash
 # Check file exists
-ls data/inputs/samples/ccm_intervention_samples_100k.npz
+ls data/inputs/samples/aw_model_intervention_samples_100k.npz
 
 # If missing, regenerate
 cd data/inputs
-python ccm_extract.py
+python aw_intervention_models.py
 ```
 
 ### Results differ slightly
@@ -271,9 +271,9 @@ This is expected! 100k samples are more accurate. Differences of 0.1-0.3% in ris
 ### .npz file seems corrupted
 ```bash
 # Delete and regenerate
-rm data/inputs/samples/ccm_intervention_samples_100k.npz
+rm data/inputs/samples/aw_model_intervention_samples_100k.npz
 cd data/inputs
-python ccm_extract.py
+python aw_intervention_models.py
 ```
 
 ---

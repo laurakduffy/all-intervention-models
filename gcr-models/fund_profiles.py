@@ -36,16 +36,19 @@ def _r_max_from_cumulative_risk(
     )
     return float(result[0]) if scalar else result
 
-YEARS_LOOK_AHEAD = 3 # number of years to consider for DMR calculations
+YEARS_LOOK_AHEAD = 3 # number of years to consider for DMR calculations. 1 and 3 presently allowed
 
 # ---------------------------------------------------------------------------
 # Cause-specific risk fractions (share of total x-risk per cause).
-# Derived from RP house-view: (AI direct + AI indirect) / total, etc.
-# Source: RP Cross Cause Model
+# Partially derived from RP house-view: (AI direct + AI indirect) / total, etc.
+# This gave 92% AI, 3.5% nuclear, 0.6% bio, and ~4% other
+# We got input from others that bio would be higher, so we've updated the cause fractions
+# to be: 90% AI, 3% nuclear, 3% bio, and 4% other. This is still uncertain and we may update further in the future.
+# Source: RP Cross Cause Model, external input
 # ---------------------------------------------------------------------------
-_AI_CAUSE_FRACTION      = (0.5541 + 0.06157) / 0.67   # ~0.919
-_NUCLEAR_CAUSE_FRACTION = 0.02354 / 0.67               # ~0.035
-_BIO_CAUSE_FRACTION     = 0.004183 / 0.67              # ~0.006
+_AI_CAUSE_FRACTION      = 0.9  
+_NUCLEAR_CAUSE_FRACTION = 0.03           
+_BIO_CAUSE_FRACTION     = 0.03 
 
 # Q4.4 declined. 
 # Assume same as nuclear risk reduction per $10M, with uncertainty envelope.
@@ -59,7 +62,14 @@ _SENTINEL_REL_RISK_REDUCTION = [
 # all hazards (AI, bio, nuclear, etc.) are present in every simulation.
 # Fund-specific rel_risk_reduction * cause_fraction gives the fraction of
 # total r_max reduced, computed inside the model — no dependency on risk level.
-_TOTAL_XRISK_100YR = [0.05, 0.10, 0.65]
+# External input: 15% central estimate, 10% chance x-risk is under 5%, and 10% chance it's over 34%
+# Views have slightly updated to be more pessimistic since then, so upper bound of 40% used. 
+_TOTAL_XRISK_100YR = [0.05, 0.15, 0.40]
+
+_INITIAL_WORLD_VALUE = 8e9       # current world population (people)
+_TIME_HORIZON = 1e14             # humanity's time horizon (years)
+_PERIODS_VALUE = [0, 5, 10, 20, 100, 500]  # model time-period boundaries (years)
+
 
 _RP_WORLD_PRIORS = {
     # Total x-risk framing (all causes), from RP house-view inputs.
@@ -71,10 +81,10 @@ _RP_WORLD_PRIORS = {
     "rate_growth": [0.005, 0.01, 0.04],
     "cubic_growth": {"values": [False, True], "p": [0.90, 0.10]},
     "T_c": {'values': [500, 300, 80], 'p': [0.6, 0.3, 0.1]}, # seems unlikely in the next 80 years
-    "s": [0.01, 0.1],
+    "s": [0.001, 0.01, 0.1], # we don't know how fast stellar expansion could happen
 }
 
-# Longview Nuclear 4.4 (extinction): 0.2% per $10M, with uncertainty envelope.
+# Longview Nuclear 4.4 (extinction): 0.2% rel cause risk reduction per $10M
 # Might be too optimistic, downweight central by 10x, pessimistic by 50x
 # Thus, we get 0.02% rel nuclear risk reduction per $10M as the central estimate
 _NUCLEAR_REL_REDUCTION_PER_10M = [0.002/50, 0.002/10, 0.002] 
@@ -90,13 +100,17 @@ _AI_REL_RISK_REDUCTION = [
     rel * (70 * M * YEARS_LOOK_AHEAD / (10 * M)) for rel in _AI_REL_REDUCTION_PER_10M
 ]
 
+_SENTINEL_BUDGET = 7.2 * M * YEARS_LOOK_AHEAD
+_NUCLEAR_BUDGET  = 5.7 * M * YEARS_LOOK_AHEAD
+_AI_BUDGET       = 70  * M * YEARS_LOOK_AHEAD
+
 FUND_PROFILES = {
     "sentinel": {
         "display_name": "Sentinel Bio",
-        "budget": 7.2 * M * YEARS_LOOK_AHEAD,
-        "counterfactual_factor": 0.80 * 1.0 + 0.15 * 0.5 + 0.05 * 0.0,  # 0.875
-        "p_harm": 0.05, 
-        "p_zero": 0.50, 
+        "budget": _SENTINEL_BUDGET,
+        "counterfactual_factor": 0.80 * 1.0 + 0.15 * 0.5 + 0.05 * 0.0,  # 0.875, from survey
+        "p_harm": 0.05, # survey: 5%
+        "p_zero": 0.50,  # survey: 25%, we increased but are not confident. 
         "harm_multiplier": 1.0, # harm assumed to be equal in magnitude to benefits
         "sweep_params": {
             **_RP_WORLD_PRIORS,
@@ -104,12 +118,12 @@ FUND_PROFILES = {
             "rel_risk_reduction": _SENTINEL_REL_RISK_REDUCTION,
         },
         "fixed_params": {
-            "budget": 7.2 * M * YEARS_LOOK_AHEAD,
-            "periods_value": [0, 5, 10, 20, 100, 500],
-            "T_h": 1e14,
+            "budget": _SENTINEL_BUDGET,
+            "periods_value": _PERIODS_VALUE,
+            "T_h": _TIME_HORIZON,
             "year_effect_starts": 0,
             "persistence_effect": 15,
-            "initial_value": 8e9,
+            "initial_value": _INITIAL_WORLD_VALUE,
             "cause_fraction": _BIO_CAUSE_FRACTION,
         },
         "export": {
@@ -140,7 +154,7 @@ FUND_PROFILES = {
                 "recipient_type": "human_life_years",
                 "p_10yr": 0.02, # from survey, question 4.3.1
                 "expected_deaths": 316e6,  # geomean(100M, 1B)
-                "natural_pandemic_discount": 1.0,  # no discount
+                "discount": 1.0,  # no discount
                 "sweep_rel_rr": _SENTINEL_REL_RISK_REDUCTION,
                 "sweep_persistence": [10, 15, 25],
             },
@@ -150,9 +164,9 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_10m_100m",
                 "near_term_xrisk": False,
                 "recipient_type": "human_life_years",
-                "p_10yr": 0.30,
+                "p_10yr": 0.30, # survey question 4.3
                 "expected_deaths": 31.6e6,  # geomean(10M, 100M)
-                "natural_pandemic_discount": 0.3,  # Sentinel focuses on engineered bio
+                "discount": 0.3,  # Sentinel focuses on engineered biorisks, not natural pandemics
                 "sweep_rel_rr": _SENTINEL_REL_RISK_REDUCTION,
                 "sweep_persistence": [10, 15, 25],
             },
@@ -160,10 +174,10 @@ FUND_PROFILES = {
     },
     "longview_nuclear": {
         "display_name": "Longview Philanthropy Nuclear Weapons Policy Fund",
-        "budget": 5.7 * M * YEARS_LOOK_AHEAD,
+        "budget": _NUCLEAR_BUDGET,
         "counterfactual_factor": 0.80 * 1.0 + 0.10 * 0.5 + 0.10 * 0.0,  # 0.85
-        "p_harm": 0.05, 
-        "p_zero": 0.50,  
+        "p_harm": 0.05, # survey: 2% - increased to 5%
+        "p_zero": 0.50,  # survey: 27% --> increased to 50% but highly uncertain
         "harm_multiplier": 1.0, 
 
         "sweep_params": {
@@ -172,14 +186,14 @@ FUND_PROFILES = {
             "rel_risk_reduction": _NUCLEAR_REL_RISK_REDUCTION,
         },
         "fixed_params": {
-            "budget": 5.7 * M * YEARS_LOOK_AHEAD,
-            "periods_value": [0, 5, 10, 20, 100, 500],
-            "T_h": 1e14,
+            "budget": _NUCLEAR_BUDGET,
+            "periods_value": _PERIODS_VALUE,
+            "T_h": _TIME_HORIZON,
             # Derived from Section 6.1 weighted timing (~4 years).
             "year_effect_starts": 4,
             # Derived from Section 6.2 weighted persistence (~21 years).
             "persistence_effect": 21,
-            "initial_value": 8e9,
+            "initial_value": _INITIAL_WORLD_VALUE,
             "cause_fraction": _NUCLEAR_CAUSE_FRACTION,
         },
         "export": {
@@ -197,29 +211,54 @@ FUND_PROFILES = {
                 (1, 1.0), (2, 1), (5, 0.8), (8, 0.25), (20, 0.05),
             ],
         },
+        "sub_extinction_tiers": [
+            {
+                "tier_name": "100M-1B deaths",
+                "project_id": "longview_nuclear_100m_1b",
+                "effect_id": "effect_human_lives_sub_ext_100m_1b",
+                "near_term_xrisk": False,
+                "recipient_type": "human_life_years",
+                "p_10yr": 1 - 0.98 ** (10 / 30),  # survey: 4.3 1-3% over 30 years
+                "expected_deaths": 316e6,  # geomean(100M, 1B)
+                "discount": 1.0,
+                "sweep_rel_rr": _NUCLEAR_REL_RISK_REDUCTION,
+                "sweep_persistence": [15, 21, 30],
+            },
+            {
+                "tier_name": "10M-100M deaths",
+                "project_id": "longview_nuclear_10m_100m",
+                "effect_id": "effect_human_lives_sub_ext_10m_100m",
+                "near_term_xrisk": False,
+                "recipient_type": "human_life_years",
+                "p_10yr": 1 - 0.90 ** (10 / 30),  # survey: 4.3: 8-12% over 30 years
+                "expected_deaths": 31.6e6,  # geomean(10M, 100M)
+                "discount": 1.0,
+                "sweep_rel_rr": _NUCLEAR_REL_RISK_REDUCTION,
+                "sweep_persistence": [15, 21, 30],
+            },
+        ],
     },
     "longview_ai": {
         "display_name": "Longview Philanthropy AI Program",
-        "budget": 70 * M * YEARS_LOOK_AHEAD,
+        "budget": _AI_BUDGET,
         "counterfactual_factor": 0.60 * 1.0 + 0.25 * 0.5 + 0.15 * 0.0,  # 0.725
-        "p_harm": 0.15,  
-        "p_zero": 0.50,
+        "p_harm": 0.15,  # survey: 5%, increased to 15% but uncertain
+        "p_zero": 0.50, # survey: 20% increased to 50% but uncertain
         "harm_multiplier": 1.0,
         "sweep_params": {
             **_RP_WORLD_PRIORS,
             "cumulative_risk_100_yrs": _TOTAL_XRISK_100YR,
-            # AI survey declined 4.4; use explicit low intervention-effect priors.
             "rel_risk_reduction": _AI_REL_RISK_REDUCTION,
         },
         "fixed_params": {
-            "budget": 70 * M * YEARS_LOOK_AHEAD,
-            "periods_value": [0, 5, 10, 20, 100, 500],
-            "T_h": 1e14,
+            "budget": _AI_BUDGET,
+            "periods_value": _PERIODS_VALUE,
+            "T_h": _TIME_HORIZON,
             # Section 6.1 weighted timing (~2.8 years).
             "year_effect_starts": 3,
             # Section 6.2 skipped in survey; conservative prior assumption.
             "persistence_effect": 12,
-            "initial_value": 8e9,
+            "initial_value": _INITIAL_WORLD_VALUE,
             "cause_fraction": _AI_CAUSE_FRACTION,
         },
         "export": {
@@ -230,8 +269,37 @@ FUND_PROFILES = {
             # Q3.2 (2x ~$140M): "stay approximately the same" for one year
             # Q3.3 (5x ~$350M): "decline by ~75%".
             # Modified to assume that returns start to diminish around 50M, 50% by $190M for one year. 
+            # Highly uncertain
             "diminishing_anchors": [(50/70, 1.0), (190/70, 0.50), (260/70, 0.25)],
         },
+        "sub_extinction_tiers": [
+            {
+                "tier_name": "100M-1B deaths",
+                "project_id": "longview_ai_100m_1b",
+                "effect_id": "effect_human_lives_sub_ext_100m_1b",
+                "near_term_xrisk": True,
+                "recipient_type": "human_life_years",
+                # Declined to estimate. Assume geomean of biorisk and nuclear
+                "p_10yr":  (0.02 * (1 - 0.98 ** (10 / 30)))**0.5, 
+                "expected_deaths": 316e6,  # geomean(100M, 1B)
+                "discount": 1.0,
+                "sweep_rel_rr": _AI_REL_RISK_REDUCTION,
+                "sweep_persistence": [8, 12, 20],
+            },
+            {
+                "tier_name": "10M-100M deaths",
+                "project_id": "longview_ai_10m_100m",
+                "effect_id": "effect_human_lives_sub_ext_10m_100m",
+                "near_term_xrisk": True,
+                "recipient_type": "human_life_years",
+                # Declined to estimate. Assume geomean of biorisk, nuclear 
+                "p_10yr": (0.3 * (1 - 0.90 ** (10 / 30)))**0.5, 
+                "expected_deaths": 31.6e6,  # geomean(10M, 100M)
+                "discount": 1.0,
+                "sweep_rel_rr": _AI_REL_RISK_REDUCTION,
+                "sweep_persistence": [8, 12, 20], # declined to answer, guesses
+            },
+        ],
     },
 }
 
@@ -266,7 +334,6 @@ def make_earth_only_profile(profile):
 
 
 if __name__ == "__main__":
-    # ── Option A calibration display ─────────────────────────────────────────
     # rel_risk_reduction = rel_per_10m * (budget / $10M)  [independent of risk level]
     # cause_fraction     = cause-specific share of total x-risk
     # rel_rr_from_int    = rel_risk_reduction * cause_fraction  [used by model]
@@ -280,14 +347,15 @@ if __name__ == "__main__":
         print(SEP)
         print(f"  Budget: {budget_label}  |  cause_fraction: {cause_frac:.5f}")
         print()
+        cum_hdrs = [f"% total r_max @{int(c*100)}%" for c in _TOTAL_XRISK_100YR]
         print(f"  {'Scenario':<14}  {'rel/$10M':>10}  {'rel_rr':>10}  {'rel_rr_from_int':>16}  "
-              f"{'% total r_max @5%':>18}  {'% total r_max @10%':>19}  {'% total r_max @65%':>19}")
-        print(f"  {'-'*14}  {'-'*10}  {'-'*10}  {'-'*16}  {'-'*18}  {'-'*19}  {'-'*19}")
+              + "  ".join(f"{h:>19}" for h in cum_hdrs))
+        print(f"  {'-'*14}  {'-'*10}  {'-'*10}  {'-'*16}  " + "  ".join(["-"*19]*len(_TOTAL_XRISK_100YR)))
         for label, rel_per_10m, rel_rr in zip(scenarios, rel_per_10m_list, rel_rr_list):
             rr_int = rel_rr * cause_frac
-            pcts = [rr_int / _r_max_from_cumulative_risk(c) * 100 for c in [0.05, 0.10, 0.65]]
-            print(f"  {label:<14}  {rel_per_10m:>9.3%}  {rel_rr:>9.4%}  {rr_int:>15.5%}  "
-                  f"  {pcts[0]:>16.4f}%  {pcts[1]:>17.4f}%  {pcts[2]:>17.4f}%")
+            pcts = [rr_int / _r_max_from_cumulative_risk(c) * 100 for c in _TOTAL_XRISK_100YR]
+            pct_strs = "  ".join(f"{p:>17.4f}%" for p in pcts)
+            print(f"  {label:<14}  {rel_per_10m:>9.3%}  {rel_rr:>9.4%}  {rr_int:>15.5%}    {pct_strs}")
         print()
 
     _show_fund(
@@ -324,7 +392,8 @@ if __name__ == "__main__":
         {"fund": "longview_nuclear","rel_scenarios": ["conservative", "central", "optimistic"], "rel_per_10m": _NUCLEAR_REL_REDUCTION_PER_10M,  "cause_fraction": _NUCLEAR_CAUSE_FRACTION},
         {"fund": "longview_ai",     "rel_scenarios": ["conservative", "central", "optimistic"], "rel_per_10m": _AI_REL_REDUCTION_PER_10M,       "cause_fraction": _AI_CAUSE_FRACTION},
     ]
-    _CUM_LABELS = ["low_5pct", "central_10pct", "high_65pct"]
+    _CUM_LABELS = [f"{'low' if i == 0 else 'central' if i == 1 else 'high'}_{int(c*100)}pct"
+                   for i, c in enumerate(_TOTAL_XRISK_100YR)]
 
     detail_rows = []
     for cfg in _CSV_FUND_CONFIGS:

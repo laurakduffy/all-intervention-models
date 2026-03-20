@@ -1,11 +1,28 @@
 ## Combine all the data on risk scores and diminishing returns from the fund into a single JSON file
 import json
+import sys
+import os
 import pandas as pd
 import numpy as np
 from datetime import datetime
 
 BUDGET_M = 897 # in Millions
 INCREMENT_SIZE = 10 # in Millions
+
+_gcr_models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gcr-models")
+sys.path.insert(0, _gcr_models_dir)
+from fund_profiles import YEARS_LOOK_AHEAD 
+sys.path.pop(0)
+
+DIMINISHING_RETURNS_YRS = 3
+
+if DIMINISHING_RETURNS_YRS != YEARS_LOOK_AHEAD:
+    raise ValueError(f"Mismatch between DIMINISHING_RETURNS_YRS ({DIMINISHING_RETURNS_YRS}) and YEARS_LOOK_AHEAD ({YEARS_LOOK_AHEAD}). Please ensure these are aligned.")
+
+# combine the diminishing returns data from the three models into a single dataframe
+gw_diminishing_returns = pd.read_csv('gw-models/givewell_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
+aw_diminishing_returns = pd.read_csv('aw-models/outputs/aw_combined_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
+gcr_diminishing_returns = pd.read_csv('gcr-models/diminishing_returns/gcr_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
 
 FUND_NAME_MAP = {
     'sentinel': 'sentinel_bio',
@@ -68,10 +85,7 @@ TIME_MAPPINGS = [
     ('t5', '500_plus')    # Default to 0.0 if not found
 ]
 
-# combine the diminishing returns data from the three models into a single dataframe
-gw_diminishing_returns = pd.read_csv('gw-models/givewell_diminishing_returns.csv')
-aw_diminishing_returns = pd.read_csv('aw-models/outputs/aw_combined_diminishing_returns.csv')
-gcr_diminishing_returns = pd.read_csv('gcr-models/rp_output_diminishing_returns.csv')
+
 
 diminishing_returns_df = pd.concat([gw_diminishing_returns, \
                                     aw_diminishing_returns, \
@@ -80,7 +94,7 @@ diminishing_returns_df = pd.concat([gw_diminishing_returns, \
 # upload the risk scores from the three models into a single dataframe
 gw_risk_scores = pd.read_csv('gw-models/gw_risk_adjusted.csv')
 aw_risk_scores = pd.read_csv('aw-models/outputs/aw_combined_dataset.csv')
-gcr_risk_scores = pd.read_csv('gcr-models/rp_output.csv', skiprows=1)
+gcr_risk_scores = pd.read_csv('gcr-models/gcr_output.csv', skiprows=1)
 
 
 risk_scores_df = pd.concat([gw_risk_scores, \
@@ -174,10 +188,18 @@ projects_data = parse_effects(risk_scores_df)
 for pid in projects_data:
     projects_data[pid]["diminishing_returns"] = dim_returns_data.get(pid, [])
 
-# Merge sentinel_bio sub-fund effects into sentinel_bio, then remove sub-fund projects
-for sub_pid in ('sentinel_bio_100m_1b', 'sentinel_bio_10m_100m'):
-    if sub_pid in projects_data and 'sentinel_bio' in projects_data:
-        projects_data['sentinel_bio']['effects'].update(projects_data[sub_pid]['effects'])
+# Merge sub-extinction tier effects into their parent funds, then remove sub-fund projects
+_SUB_FUND_MERGES = [
+    ('sentinel_bio_100m_1b',     'sentinel_bio'),
+    ('sentinel_bio_10m_100m',    'sentinel_bio'),
+    ('longview_nuclear_100m_1b', 'longview_nuclear'),
+    ('longview_nuclear_10m_100m','longview_nuclear'),
+    ('longview_ai_100m_1b',      'longview_ai'),
+    ('longview_ai_10m_100m',     'longview_ai'),
+]
+for sub_pid, parent_pid in _SUB_FUND_MERGES:
+    if sub_pid in projects_data and parent_pid in projects_data:
+        projects_data[parent_pid]['effects'].update(projects_data[sub_pid]['effects'])
         del projects_data[sub_pid]
 
 now = datetime.now()
@@ -213,10 +235,10 @@ final_json_structure = {
 }
 
 # Export the generated dictionary to JSON
-with open('output_data.json', 'w') as f:
+with open('output_data_{}yr.json'.format(DIMINISHING_RETURNS_YRS), 'w') as f:
     json.dump(final_json_structure, f, indent=2)
 
-print("Data successfully mapped and exported to output_data.json")
+print("Data successfully mapped and exported to output_data_{}yr.json".format(DIMINISHING_RETURNS_YRS))
 
 # Export normalized risk-adjusted data to CSV
 time_labels = ['t0', 't1', 't2', 't3', 't4', 't5']

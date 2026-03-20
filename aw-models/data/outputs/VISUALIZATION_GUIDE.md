@@ -2,7 +2,7 @@
 
 ## Overview
 
-Added visualization and extended statistical reporting to `ccm_extract.py` to enable quality control and visual inspection of cost-effectiveness distributions.
+Added visualization and extended statistical reporting to `aw_intervention_models.py` to enable quality control and visual inspection of cost-effectiveness distributions.
 
 ## What Was Added
 
@@ -25,7 +25,7 @@ Each intervention now has a histogram showing:
 
 ### 2. Extended Summary Statistics
 
-**File**: `ccm_extended_statistics.csv`
+**File**: `aw_model_extended_statistics.csv`
 
 **Columns**:
 - `intervention`: Machine-readable key
@@ -50,7 +50,7 @@ Each intervention now has a histogram showing:
 
 ### 3. Enhanced Terminal Output
 
-When running `ccm_extract.py`, you now see:
+When running `aw_intervention_models.py`, you now see:
 
 ```
 ======================================================================
@@ -67,8 +67,8 @@ GENERATING VISUALIZATIONS AND EXTENDED STATISTICS
 
 ======================================================================
 OUTPUTS:
-  YAML:        ccm_intervention_estimates.yaml
-  CSV:         ccm_extended_statistics.csv
+  YAML:        aw_model_intervention_estimates.yaml
+  CSV:         aw_model_extended_statistics.csv
   Histograms:  histograms/ (7 images)
 ======================================================================
 ```
@@ -171,7 +171,7 @@ Both are standard library or already available in typical Python environments.
 ## Customization
 
 ### Change Number of Bins
-In `ccm_extract.py`, modify the `create_histogram` call:
+In `aw_intervention_models.py`, modify the `create_histogram` call:
 
 ```python
 create_histogram(samples, title, path, bins=50)  # Fewer bins for smoother look
@@ -202,18 +202,18 @@ To regenerate after updating CCM parameters:
 
 ```bash
 cd data/inputs
-python ccm_extract.py
+python aw_intervention_models.py
 ```
 
 This will overwrite:
 - `histograms/*.png` (7 files)
-- `ccm_extended_statistics.csv`
-- `ccm_intervention_estimates.yaml` (with samples)
+- `aw_model_extended_statistics.csv`
+- `aw_model_intervention_estimates.yaml` (with samples)
 
 ## Example Workflow
 
-1. **Modify CCM parameters** in `ccm_extract.py`
-2. **Run script**: `python ccm_extract.py`
+1. **Modify CCM parameters** in `aw_intervention_models.py`
+2. **Run script**: `python aw_intervention_models.py`
 3. **Review histograms** in `histograms/` folder
 4. **Check CSV** for percentile details
 5. **Validate distributions** look reasonable

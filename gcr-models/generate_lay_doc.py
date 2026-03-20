@@ -18,7 +18,7 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 from fund_profiles import (
-    FUND_PROFILES,
+    FUND_PROFILES, get_fund_profile,
     _AI_CAUSE_FRACTION, _NUCLEAR_CAUSE_FRACTION, _BIO_CAUSE_FRACTION,
     _SENTINEL_REL_REDUCTION_PER_10M, _NUCLEAR_REL_REDUCTION_PER_10M, _AI_REL_REDUCTION_PER_10M,
     _SENTINEL_REL_RISK_REDUCTION, _NUCLEAR_REL_RISK_REDUCTION, _AI_REL_RISK_REDUCTION,
@@ -386,30 +386,39 @@ add_note(doc,
 # ---------------------------------------------------------------------------
 # 7. Sub-extinction events (Sentinel Bio only)
 # ---------------------------------------------------------------------------
-add_heading(doc, "7.  Catastrophes short of extinction (Sentinel Bio only)", 1)
+add_heading(doc, "7.  Catastrophes short of extinction", 1)
 add_body(doc,
-    "Sentinel Bio's work could also reduce the risk of large-scale pandemics that kill "
-    "millions or hundreds of millions of people without ending civilisation. The model "
-    "captures two such tiers separately from the extinction pathway:"
+    "Each fund also models large-scale catastrophes that kill millions or hundreds of "
+    "millions of people without ending civilisation. Two tiers are captured separately "
+    "from the extinction pathway for each fund:"
 )
-_tiers = _fp_sentinel["sub_extinction_tiers"]
-add_table(doc,
-    ["Event tier", "Chance per decade", "Expected deaths if it occurs", "Discount applied"],
-    [
-        [t["tier_name"],
-         fmt_pct(t["p_10yr"], 0),
-         f"{t['expected_deaths'] / 1e6:.0f}M",
-         "None (Sentinel focuses on engineered bio, which drives this tier)"
-         if t["natural_pandemic_discount"] == 1.0
-         else f"{fmt_pct(1 - t['natural_pandemic_discount'], 0)} discount "
-              "(Sentinel mainly targets engineered bio, not natural outbreaks)"]
-        for t in _tiers
-    ],
-)
+
+_sub_ext_funds = [
+    ("Sentinel Bio", _fp_sentinel),
+    ("Longview Nuclear", get_fund_profile("longview_nuclear")),
+    ("Longview AI", get_fund_profile("longview_ai")),
+]
+for _fund_name, _fp in _sub_ext_funds:
+    _tiers = _fp.get("sub_extinction_tiers", [])
+    if not _tiers:
+        continue
+    add_heading(doc, _fund_name, 3)
+    add_table(doc,
+        ["Event tier", "Chance per decade", "Expected deaths if it occurs", "Discount applied"],
+        [
+            [t["tier_name"],
+             fmt_pct(t["p_10yr"], 0),
+             f"{t['expected_deaths'] / 1e6:.0f}M",
+             "None" if t["discount"] == 1.0
+             else f"{fmt_pct(1 - t['discount'], 0)} discount"]
+            for t in _tiers
+        ],
+    )
+
 add_body(doc,
     "These tiers use a simpler calculation: probability of the event × expected deaths "
     "× fraction of risk the grant removes × how long the effect lasts. They are added "
-    "to Sentinel Bio's extinction-pathway value to give a combined total."
+    "to each fund's extinction-pathway value to give a combined total."
 )
 
 # ---------------------------------------------------------------------------

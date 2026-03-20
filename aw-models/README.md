@@ -23,8 +23,8 @@ python run.py --fund navigation_fund         # (template — fill in splits firs
 ```
 aw-models/
 ├── data/inputs/
-│   ├── ccm_intervention_estimates.yaml  # CCM- or otherwise-derived CE percentiles per intervention
-│   ├── ccm_extract.py                  # Script that generated the above from CCM params
+│   ├── aw_model_intervention_estimates.yaml  # CCM- or otherwise-derived CE percentiles per intervention
+│   ├── aw_intervention_models.py       # Script that generated the above from CCM params
 │   ├── funds/
 │   │   ├── ea_awf.yaml                 # EA AWF splits (estimated from 2024 payouts)
 │   │   ├── navigation_fund.yaml        # Navigation Fund (general)
@@ -51,7 +51,7 @@ aw-models/
 
 ## Methodology
 
-1. **CCM intervention estimates**: Pre-computed cost-effectiveness distributions from the Rethink Priorities CCM for invertebrates (farmed and wild), extracted as p1/p5/p10/p50/p90/p95/p99 percentiles of suffering-years averted per $1000. Source parameters are in `ccm_extract.py`. Other estimate methods are described in this document here: https://docs.google.com/document/d/1Kuu08LFYpjG-wGzt7_QmBLkFTzsv4FaQHYRQKn9p3A8/edit?usp=sharing
+1. **CCM intervention estimates**: Pre-computed cost-effectiveness distributions from the Rethink Priorities CCM for invertebrates (farmed and wild), extracted as p1/p5/p10/p50/p90/p95/p99 percentiles of suffering-years averted per $1000. Source parameters are in `aw_intervention_models.py`. Other estimate methods are described in this document here: https://docs.google.com/document/d/1Kuu08LFYpjG-wGzt7_QmBLkFTzsv4FaQHYRQKn9p3A8/edit?usp=sharing
 
 2. **Fund budget splits**: Each fund has a YAML file specifying what percentage of its budget goes to each intervention type (chicken campaigns, fish welfare, shrimp, etc.).
 
@@ -72,7 +72,7 @@ aw-models/
 2. Fill in `annual_budget_M` and the intervention `splits` (decimal fractions summing to ~1.0)
 3. Run `python run.py --fund <fund_name> --verbose`
 
-Available intervention keys match those in `ccm_intervention_estimates.yaml`:
+Available intervention keys match those in `aw_model_intervention_estimates.yaml`:
 - `chicken_corporate_campaigns`, `shrimp_welfare`, `fish_welfare`
 - `invertebrate_welfare`, `policy_advocacy_multi_species`
 - `movement_building`, `wild_animal_welfare`
