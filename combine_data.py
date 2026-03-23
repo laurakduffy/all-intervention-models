@@ -14,7 +14,7 @@ sys.path.insert(0, _gcr_models_dir)
 from fund_profiles import YEARS_LOOK_AHEAD 
 sys.path.pop(0)
 
-DIMINISHING_RETURNS_YRS = 3
+DIMINISHING_RETURNS_YRS = 1
 
 if DIMINISHING_RETURNS_YRS != YEARS_LOOK_AHEAD:
     raise ValueError(f"Mismatch between DIMINISHING_RETURNS_YRS ({DIMINISHING_RETURNS_YRS}) and YEARS_LOOK_AHEAD ({YEARS_LOOK_AHEAD}). Please ensure these are aligned.")
@@ -23,6 +23,7 @@ if DIMINISHING_RETURNS_YRS != YEARS_LOOK_AHEAD:
 gw_diminishing_returns = pd.read_csv('gw-models/givewell_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
 aw_diminishing_returns = pd.read_csv('aw-models/outputs/aw_combined_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
 gcr_diminishing_returns = pd.read_csv('gcr-models/diminishing_returns/gcr_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
+leaf_diminishing_returns = pd.read_csv('leaf-models/leaf_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
 
 FUND_NAME_MAP = {
     'sentinel': 'sentinel_bio',
@@ -30,6 +31,7 @@ FUND_NAME_MAP = {
     'longview_ai': 'longview_ai',
     'aw_combined': 'animal_welfare_funds',
     'givewell': 'givewell', 
+    'leaf': 'leaf'
 }
 
 PROJECT_METADATA = {
@@ -37,7 +39,8 @@ PROJECT_METADATA = {
     "sentinel_bio": {"name": "Biorisk fund (Sentinel bio)", "color": "#85E4FF"},
     "longview_nuclear": {"name": "Nuclear fund (Longview)", "color": "#e74c3c"},
     "longview_ai": {"name": "AI fund (Longview)", "color": "#85E4FF"},
-    "animal_welfare_funds": {"name": "Animal Welfare fund (combined)", "color": "#85E4FF"}
+    "animal_welfare_funds": {"name": "Animal Welfare fund (combined)", "color": "#85E4FF"},
+    "leaf": {'name': "LEAF", "color": "#85E4FF"},
 }
 
 RISK_PROFILES = [
@@ -89,17 +92,20 @@ TIME_MAPPINGS = [
 
 diminishing_returns_df = pd.concat([gw_diminishing_returns, \
                                     aw_diminishing_returns, \
-                                    gcr_diminishing_returns], ignore_index=True)
+                                    gcr_diminishing_returns, \
+                                    leaf_diminishing_returns], ignore_index=True)
 
 # upload the risk scores from the three models into a single dataframe
 gw_risk_scores = pd.read_csv('gw-models/gw_risk_adjusted.csv')
 aw_risk_scores = pd.read_csv('aw-models/outputs/aw_combined_dataset.csv')
 gcr_risk_scores = pd.read_csv('gcr-models/gcr_output.csv', skiprows=1)
+leaf_risk_scores = pd.read_csv('leaf-models/leaf_risk_adjusted.csv')
 
 
 risk_scores_df = pd.concat([gw_risk_scores, \
                             aw_risk_scores, \
-                            gcr_risk_scores], ignore_index=True)
+                            gcr_risk_scores, 
+                            leaf_risk_scores], ignore_index=True)
 
 # --- 2. Helper Functions ---
 
@@ -192,10 +198,13 @@ for pid in projects_data:
 _SUB_FUND_MERGES = [
     ('sentinel_bio_100m_1b',     'sentinel_bio'),
     ('sentinel_bio_10m_100m',    'sentinel_bio'),
+    ('sentinel_bio_1b_8b',       'sentinel_bio'),
     ('longview_nuclear_100m_1b', 'longview_nuclear'),
     ('longview_nuclear_10m_100m','longview_nuclear'),
+    ('longview_nuclear_1b_8b',   'longview_nuclear'),
     ('longview_ai_100m_1b',      'longview_ai'),
     ('longview_ai_10m_100m',     'longview_ai'),
+    ('longview_ai_1b_8b',        'longview_ai'),
 ]
 for sub_pid, parent_pid in _SUB_FUND_MERGES:
     if sub_pid in projects_data and parent_pid in projects_data:

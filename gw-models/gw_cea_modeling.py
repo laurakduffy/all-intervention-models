@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+SCRIPT_DIR = Path(__file__).parent
+
 import numpy as np
 import pandas as pd
 import squigglepy as sq
@@ -176,7 +178,7 @@ def create_summary_statistics(effect_per_M_by_time):
                 '5th_percentile': np.percentile(effect_per_M_by_time[effect_type][time_horizon], 5),
                 '95th_percentile': np.percentile(effect_per_M_by_time[effect_type][time_horizon], 95),
             }
-    csv_file = 'summary_statistics.csv'
+    csv_file = str(SCRIPT_DIR / 'summary_statistics.csv')
     with open(csv_file, 'w') as f:
         f.write('effect_type,time_horizon,mean,5th_percentile,95th_percentile\n')
         for effect_type in ['YLDs_averted', 'life_years_saved', 'income_doublings']:
@@ -188,7 +190,7 @@ def create_summary_statistics(effect_per_M_by_time):
 
 def create_and_save_histograms(distribution_effect_by_type):
     # Create histograms directory if it doesn't exist
-    os.makedirs('histograms', exist_ok=True)
+    os.makedirs(SCRIPT_DIR / 'histograms', exist_ok=True)
 
     for effect_type in ['YLDs_averted', 'lives_saved', 'income_doublings']:
         plt.hist(distribution_effect_by_type[effect_type], bins=30, alpha=0.7, label=effect_type)
@@ -196,7 +198,7 @@ def create_and_save_histograms(distribution_effect_by_type):
         plt.ylabel('Frequency')
         plt.title(effect_type)
         plt.legend()
-        plt.savefig(f'histograms/{effect_type}_histogram.png')
+        plt.savefig(str(SCRIPT_DIR / 'histograms' / f'{effect_type}_histogram.png'))
         plt.close()
 
 
@@ -320,7 +322,7 @@ def main():
     risk_adjusted_df = apply_risk_adjustments_to_simulations(effect_per_M_by_time)
     
     # Save risk-adjusted output
-    output_file = 'gw_risk_adjusted.csv'
+    output_file = str(SCRIPT_DIR / 'gw_risk_adjusted.csv')
     risk_adjusted_df.to_csv(output_file, index=False)
     print(f"\n✓ Risk-adjusted results saved to: {output_file}")
     

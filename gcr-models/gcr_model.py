@@ -614,8 +614,12 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
             continue
         if key in param_samples:
             continue
-        dtype = bool if key in _BOOL_PARAMS else float
-        param_samples[key] = np.full(actual_n_samples, val, dtype=dtype)
+        if isinstance(val, dict):
+            vals, probs = _get_values_and_p(val)
+            param_samples[key] = np.random.choice(vals, size=actual_n_samples, p=probs)
+        else:
+            dtype = bool if key in _BOOL_PARAMS else float
+            param_samples[key] = np.full(actual_n_samples, val, dtype=dtype)
     
     # Handle carrying capacity
     if "carrying_capacity" not in param_samples:

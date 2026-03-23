@@ -36,7 +36,7 @@ def _r_max_from_cumulative_risk(
     )
     return float(result[0]) if scalar else result
 
-YEARS_LOOK_AHEAD = 3 # number of years to consider for DMR calculations. 1 and 3 presently allowed
+YEARS_LOOK_AHEAD = 1 # number of years to consider for DMR calculations. 1 and 3 presently allowed
 
 # ---------------------------------------------------------------------------
 # Cause-specific risk fractions (share of total x-risk per cause).
@@ -121,8 +121,8 @@ FUND_PROFILES = {
             "budget": _SENTINEL_BUDGET,
             "periods_value": _PERIODS_VALUE,
             "T_h": _TIME_HORIZON,
-            "year_effect_starts": 0,
-            "persistence_effect": 15,
+            "year_effect_starts": (3+4)/2, # assume same as average of nuclear, ai
+            "persistence_effect": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
             "initial_value": _INITIAL_WORLD_VALUE,
             "cause_fraction": _BIO_CAUSE_FRACTION,
         },
@@ -156,7 +156,7 @@ FUND_PROFILES = {
                 "expected_deaths": 316e6,  # geomean(100M, 1B)
                 "discount": 1.0,  # no discount
                 "sweep_rel_rr": _SENTINEL_REL_RISK_REDUCTION,
-                "sweep_persistence": [10, 15, 25],
+                "sweep_persistence": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
             },
             {
                 "tier_name": "10M-100M deaths",
@@ -164,11 +164,23 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_10m_100m",
                 "near_term_xrisk": False,
                 "recipient_type": "human_life_years",
-                "p_10yr": 0.30, # survey question 4.3
+                "p_10yr": 0.30, # survey question 4.3.2
                 "expected_deaths": 31.6e6,  # geomean(10M, 100M)
                 "discount": 0.3,  # Sentinel focuses on engineered biorisks, not natural pandemics
                 "sweep_rel_rr": _SENTINEL_REL_RISK_REDUCTION,
-                "sweep_persistence": [10, 15, 25],
+                "sweep_persistence": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
+            },
+            {
+                "tier_name": "1B-8B deaths",
+                "project_id": "sentinel_bio_1b_8b",
+                "effect_id": "effect_human_lives_sub_ext_1b_8b",
+                "near_term_xrisk": False,
+                "recipient_type": "human_life_years",
+                "p_10yr": 0.005,  # survey question 4.3.3
+                "expected_deaths": 2.83e9,  # geomean(1B, 8B)
+                "discount": 1.0,
+                "sweep_rel_rr": _SENTINEL_REL_RISK_REDUCTION,
+                "sweep_persistence": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
             },
         ],
     },
@@ -192,7 +204,7 @@ FUND_PROFILES = {
             # Derived from Section 6.1 weighted timing (~4 years).
             "year_effect_starts": 4,
             # Derived from Section 6.2 weighted persistence (~21 years).
-            "persistence_effect": 21,
+            "persistence_effect": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
             "initial_value": _INITIAL_WORLD_VALUE,
             "cause_fraction": _NUCLEAR_CAUSE_FRACTION,
         },
@@ -222,7 +234,7 @@ FUND_PROFILES = {
                 "expected_deaths": 316e6,  # geomean(100M, 1B)
                 "discount": 1.0,
                 "sweep_rel_rr": _NUCLEAR_REL_RISK_REDUCTION,
-                "sweep_persistence": [15, 21, 30],
+                "sweep_persistence": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
             },
             {
                 "tier_name": "10M-100M deaths",
@@ -234,7 +246,19 @@ FUND_PROFILES = {
                 "expected_deaths": 31.6e6,  # geomean(10M, 100M)
                 "discount": 1.0,
                 "sweep_rel_rr": _NUCLEAR_REL_RISK_REDUCTION,
-                "sweep_persistence": [15, 21, 30],
+                "sweep_persistence": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
+            },
+            {
+                "tier_name": "1B-8B deaths",
+                "project_id": "longview_nuclear_1b_8b",
+                "effect_id": "effect_human_lives_sub_ext_1b_8b",
+                "near_term_xrisk": False,
+                "recipient_type": "human_life_years",
+                "p_10yr": 1 - (1-0.01) ** (10 / 30),  # survey 4.3: 0.5 to 1.5% over 30 years
+                "expected_deaths": 2.83e9,  # geomean(1B, 8B)
+                "discount": 1.0,
+                "sweep_rel_rr": _NUCLEAR_REL_RISK_REDUCTION,
+                "sweep_persistence": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
             },
         ],
     },
@@ -257,7 +281,7 @@ FUND_PROFILES = {
             # Section 6.1 weighted timing (~2.8 years).
             "year_effect_starts": 3,
             # Section 6.2 skipped in survey; conservative prior assumption.
-            "persistence_effect": 12,
+            "persistence_effect": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
             "initial_value": _INITIAL_WORLD_VALUE,
             "cause_fraction": _AI_CAUSE_FRACTION,
         },
@@ -284,7 +308,7 @@ FUND_PROFILES = {
                 "expected_deaths": 316e6,  # geomean(100M, 1B)
                 "discount": 1.0,
                 "sweep_rel_rr": _AI_REL_RISK_REDUCTION,
-                "sweep_persistence": [8, 12, 20],
+                "sweep_persistence": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
             },
             {
                 "tier_name": "10M-100M deaths",
@@ -292,12 +316,24 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_10m_100m",
                 "near_term_xrisk": True,
                 "recipient_type": "human_life_years",
-                # Declined to estimate. Assume geomean of biorisk, nuclear 
-                "p_10yr": (0.3 * (1 - 0.90 ** (10 / 30)))**0.5, 
+                # Declined to estimate. Assume geomean of biorisk, nuclear
+                "p_10yr": (0.3 * (1 - 0.90 ** (10 / 30)))**0.5,
                 "expected_deaths": 31.6e6,  # geomean(10M, 100M)
                 "discount": 1.0,
                 "sweep_rel_rr": _AI_REL_RISK_REDUCTION,
-                "sweep_persistence": [8, 12, 20], # declined to answer, guesses
+                "sweep_persistence": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
+            },
+            {
+                "tier_name": "1B-8B deaths",
+                "project_id": "longview_ai_1b_8b",
+                "effect_id": "effect_human_lives_sub_ext_1b_8b",
+                "near_term_xrisk": True,
+                "recipient_type": "human_life_years",
+                "p_10yr": (0.005 * (1 - (1-0.01) ** (10 / 30)))**0.5,  # geomean between nuclear and biorisk
+                "expected_deaths": 2.83e9,  # geomean(1B, 8B)
+                "discount": 1.0,
+                "sweep_rel_rr": _AI_REL_RISK_REDUCTION,
+                "sweep_persistence": {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]},
             },
         ],
     },

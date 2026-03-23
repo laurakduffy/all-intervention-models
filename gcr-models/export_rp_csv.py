@@ -140,25 +140,43 @@ def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
     all_pk = SHORT_PERIOD_KEYS + ["after_500_plus"]
     rows = []
 
+    def _sweep_vals_probs(entry):
+        if isinstance(entry, dict):
+            vals = list(entry["values"])
+            probs = entry.get("p", None)
+            if probs is None:
+                probs = [1.0 / len(vals)] * len(vals)
+            return vals, probs
+        vals = list(entry)
+        return vals, [1.0 / len(vals)] * len(vals)
+
     # Get all combinations to stratify by
     first_tier = tiers[0]
-    combos = list(itertools.product(
-        first_tier["sweep_rel_rr"], 
-        first_tier["sweep_persistence"]
-    ))
+    rel_rr_vals, rel_rr_probs = _sweep_vals_probs(first_tier["sweep_rel_rr"])
+    pers_vals, pers_probs = _sweep_vals_probs(first_tier["sweep_persistence"])
+    combos = list(itertools.product(rel_rr_vals, pers_vals))
+    combo_probs = [
+        rel_rr_probs[i] * pers_probs[j]
+        for i in range(len(rel_rr_vals))
+        for j in range(len(pers_vals))
+    ]
     n_combos = len(combos)
-    
-    # Samples per combo
-    samples_per_combo = n_samples // n_combos
-    remainder = n_samples % n_combos
-    
+
+    # Allocate samples proportionally to combo probabilities
+    raw_counts = [n_samples * p for p in combo_probs]
+    stratum_counts = [int(c) for c in raw_counts]
+    leftover = n_samples - sum(stratum_counts)
+    order = sorted(range(n_combos), key=lambda i: -(raw_counts[i] - stratum_counts[i]))
+    for i in order[:leftover]:
+        stratum_counts[i] += 1
+
     # Build stratified samples
     rel_rr_samples = []
     persistence_samples = []
     shared_causes_harm = []
-    
+
     for i, (rel_rr, pers) in enumerate(combos):
-        n_in_combo = samples_per_combo + (1 if i < remainder else 0)
+        n_in_combo = stratum_counts[i]
         
         rel_rr_samples.extend([rel_rr] * n_in_combo)
         persistence_samples.extend([pers] * n_in_combo)
@@ -561,7 +579,7 @@ def main():
         description="Export RP-style CSV for all GCR fund profiles (Monte Carlo)."
     )
     parser.add_argument(
-        "-o", "--output", default="gcr_output.csv",
+        "-o", "--output", default=str(Path(__file__).parent / "gcr_output.csv"),
         help="Output CSV path for effects (default: gcr_output.csv). Diminishing returns will be saved to diminishing_returns/gcr_diminishing_returns_{N}yr.csv",
     )
     parser.add_argument(
