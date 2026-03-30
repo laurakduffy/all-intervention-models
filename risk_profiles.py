@@ -8,7 +8,7 @@ Risk profiles
 Informal adjustments:
   neutral   — risk-neutral EV (mean)
   upside    — clip upper tail at p99, recompute mean
-  downside  — loss-averse utility (lambda=2.5, reference=median)
+  downside  — loss-averse utility (lambda=2.5, reference=0)
   combined  — percentile-based weight decay (97.5–99.9%) + loss aversion
 
 Formal models (Duffy 2023):
@@ -37,7 +37,7 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 TRUNCATION_PERCENTILE = 0.99   # upside: clip at this quantile
-LOSS_AVERSION_LAMBDA = 2.5     # downside/combined: amplify losses by this factor
+LOSS_AVERSION_LAMBDA = 5.0     # downside/combined: amplify losses by this factor
 DMREU_P = 0.05                 # thought-experiment probability → exponent a = -2/log10(p)
 WLU_L = 0.01                   # WLU concavity — low
 WLU_M = 0.05                   # WLU concavity — moderate
@@ -87,7 +87,7 @@ def compute_wlu(samples, c=WLU_M):
     if c <= 0:
         return float(np.mean(samples))
     abs_s = np.abs(samples)
-    powered = np.power(np.clip(abs_s, 0, 1e15), c)
+    powered = np.power(np.clip(abs_s, 0, 1e50), c)
     w_pos = 1.0 / (1.0 + powered)
     w_neg = 2.0 - w_pos
     weights = np.where(samples >= 0, w_pos, w_neg)
@@ -147,10 +147,9 @@ def compute_risk_profiles(samples):
     trunc_val = np.percentile(samples, TRUNCATION_PERCENTILE * 100)
     upside = float(np.mean(np.minimum(samples, trunc_val)))
 
-    # Downside: loss-averse utility around median
-    ref = float(np.median(samples))
-    gains = samples - ref
-    downside = float(ref + np.mean(np.where(gains >= 0, gains, LOSS_AVERSION_LAMBDA * gains)))
+    # Downside: loss-averse utility around 0
+    gains = samples
+    downside = float(np.mean(np.where(gains >= 0, gains, LOSS_AVERSION_LAMBDA * gains)))
 
     # Combined: percentile-based weight decay (97.5–99.9%) + loss aversion
     outcomes = np.sort(samples)
@@ -161,12 +160,12 @@ def compute_risk_profiles(samples):
     if np.any(mask_decay):
         w[mask_decay] = np.exp(-np.log(100) / 1.5 * (pcts[mask_decay] - 97.5))
     w[pcts > 99.9] = 0.0
-    util = np.where(outcomes >= ref, outcomes - ref, LOSS_AVERSION_LAMBDA * (outcomes - ref))
+    util = np.where(outcomes >= 0, outcomes, LOSS_AVERSION_LAMBDA * outcomes)
     w_sum = np.sum(w)
     if w_sum > 0:
-        combined = float(ref + np.sum(w * (N / w_sum) * util) / N)
+        combined = float(np.sum(w * (N / w_sum) * util) / N)
     else:
-        combined = float(ref + np.mean(util))
+        combined = float(np.mean(util))
 
     # ── Formal models (Duffy 2023) ──
 

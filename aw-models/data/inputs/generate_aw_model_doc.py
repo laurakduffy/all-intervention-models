@@ -1,4 +1,4 @@
-"""Generate a Word (.docx) technical documentation of the CCM extraction methodology.
+"""Generate a Word (.docx) technical documentation of the intervention model methodology.
 
 Documents the methodology in aw_intervention_models.py: how intervention cost-effectiveness
 distributions are constructed, what data sources are used, and how the output
@@ -19,19 +19,19 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
-OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "CCM_EXTRACT_DOCUMENTATION.docx")
+OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AW_MODEL_DOCUMENTATION.docx")
 
 # ---------------------------------------------------------------------------
-# Load CCM YAML to pull live values
+# Load estimates YAML to pull live values
 # ---------------------------------------------------------------------------
 
-_CCM_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aw_model_intervention_estimates.yaml")
+_ESTIMATES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aw_model_intervention_estimates.yaml")
 
-with open(_CCM_PATH) as f:
-    _CCM = yaml.safe_load(f)
+with open(_ESTIMATES_PATH) as f:
+    _ESTIMATES = yaml.safe_load(f)
 
-_INTERVENTIONS = _CCM["interventions"]
-_META = _CCM["metadata"]
+_INTERVENTIONS = _ESTIMATES["interventions"]
+_META = _ESTIMATES["metadata"]
 
 # ---------------------------------------------------------------------------
 # Word helpers
@@ -126,7 +126,7 @@ for section in doc.sections:
 # Title block
 p = doc.add_paragraph()
 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-run = p.add_run("CCM Extraction: Methodology & Parameters")
+run = p.add_run("AW Intervention Model: Methodology & Parameters")
 run.font.size = Pt(22)
 run.font.bold = True
 run.font.color.rgb = RGBColor(0x1E, 0x3C, 0x78)
@@ -163,19 +163,15 @@ add_body(doc,
     "giving, not recipients of RP grants."
 )
 add_body(doc,
-    "The script partially replicates and extends the Rethink Priorities Cross-Cause "
-    "Cost-Effectiveness Model (CCM), which is the gold standard for comparing animal "
-    "welfare interventions. For some interventions the CCM's own distribution parameters "
-    "are used directly; for others, analyst estimates are substituted where the CCM does "
-    "not have a corresponding model. Full derivations for analyst estimates are documented "
+    "All distributions are based on analyst estimates. Full derivations are documented "
     "in the linked Google Doc (see aw_intervention_models.py header)."
 )
 add_note(doc,
     f"Unit: all outputs are in suffering-years averted per $1,000 spent on the intervention "
     f"(pre-moral-weight). Moral weight adjustments — reflecting how much weight to give "
     f"animal welfare relative to human welfare — are applied separately downstream. "
-    f"The CCM itself applies moral weight adjustments; this pipeline uses the pre-weight "
-    f"values directly, labelled 'animal DALYs', pending confirmation on which weights to apply."
+    f"This pipeline uses pre-weight values directly, labelled 'animal DALYs', pending "
+    f"confirmation on which weights to apply."
 )
 
 # ---------------------------------------------------------------------------
@@ -252,7 +248,7 @@ for key, info in _INTERVENTIONS.items():
     persist = info.get("persistence_years", "?")
     summary_rows.append([
         key.replace("_", " ").title(),
-        info.get("ccm_method", "—"),
+        info.get("method", "—"),
         info.get("species", "—").title(),
         p50,
         mean,
@@ -267,9 +263,8 @@ add_table(doc,
 # Detailed sub-sections
 add_heading(doc, "4.1  Chicken corporate campaigns", 2)
 add_body(doc,
-    "Source: Direct override from RP analyst estimates (Laura Duffy, updated 3 Feb 2026). "
-    "The CCM's own chicken corporate campaigns model was replaced with a custom lognormal "
-    "calibrated to recent field evidence on cage-free campaigns."
+    "Source: RP analyst estimates (Laura Duffy, updated 3 Feb 2026). "
+    "Custom lognormal calibrated to recent field evidence on cage-free campaigns."
 )
 _ck = _INTERVENTIONS.get("chicken_corporate_campaigns", {})
 _ck_p = _ck.get("percentiles_per_1000", {})
@@ -352,16 +347,16 @@ add_body(doc,
 )
 
 add_heading(doc, "4.5  Policy advocacy (multi-species)", 2)
-_pol = _INTERVENTIONS.get("policy_advocacy_multi_species", {})
+_pol = _INTERVENTIONS.get("policy_advocacy", {})
 _pol_p = _pol.get("percentiles_per_1000", {})
 add_body(doc,
-    "Source: Analyst estimate. Policy advocacy is modelled as a weighted blend of the "
-    "chicken (60%) and shrimp (40%) distributions, then discounted by 50% to reflect "
-    "the additional causal steps required (policy must pass, be enforced, and change "
-    "actual conditions). This is a placeholder pending a dedicated CCM model."
+    "Source: Analyst estimate. Policy advocacy is modelled as the chicken corporate "
+    "campaigns distribution discounted by 50% to reflect the additional causal steps "
+    "required (policy must pass, be enforced, and change actual conditions). "
+    "This is a placeholder pending a dedicated model."
 )
 add_body(doc,
-    "    policy_blend = 0.5 * (0.6 * chicken + 0.4 * shrimp)", )
+    "    policy_blend = 0.5 * chicken", )
 add_body(doc,
     f"Effect starts year {_pol.get('effect_start_year','?')} (policy campaigns take time to "
     f"produce results). Current percentiles per $1,000: "
@@ -374,13 +369,13 @@ _mv = _INTERVENTIONS.get("movement_building", {})
 _mv_p = _mv.get("percentiles_per_1000", {})
 add_body(doc,
     "Source: Analyst estimate. Movement building (outreach, education, infrastructure) "
-    "is modelled as an indirect multiplier on the same chicken/shrimp blend, set at 25% "
-    "of the blend value. This reflects the view that movement building has a similar "
+    "is modelled as an indirect multiplier on chicken corporate campaigns, set at 25% "
+    "of the chicken value. This reflects the view that movement building has a similar "
     "direction of impact but is harder to attribute causally and works through longer "
     "causal chains."
 )
 add_body(doc,
-    "    movement = 0.25 * (0.6 * chicken + 0.4 * shrimp)", )
+    "    movement = 0.25 * chicken", )
 add_body(doc,
     f"Effect starts year {_mv.get('effect_start_year','?')} (movement-building investments "
     f"take time to affect the field). Current percentiles per $1,000: "
@@ -392,7 +387,7 @@ add_heading(doc, "4.7  Wild animal welfare", 2)
 _wd = _INTERVENTIONS.get("wild_animal_welfare", {})
 _wd_p = _wd.get("percentiles_per_1000", {})
 add_body(doc,
-    "Source: No CCM model available. Modelled as a mixture of two sub-models:"
+    "Source: Analyst estimate. Modelled as a mixture of two sub-models:"
 )
 add_bullet(doc,
     "  Wild mammal intervention (rodent as proxy): target population [lognormal CI 4,100–56,000], "
@@ -420,7 +415,7 @@ add_body(doc,
 # ---------------------------------------------------------------------------
 add_heading(doc, "5.  How outputs feed into the AW model", 1)
 add_body(doc,
-    "The AW model pipeline (effects.py) loads the CCM outputs and applies fund-specific "
+    "The AW model pipeline (effects.py) loads the intervention estimates and applies fund-specific "
     "budget split weights to convert per-intervention values to per-fund marginal impact:"
 )
 add_body(doc,
@@ -429,7 +424,7 @@ add_body(doc,
     "where fund_split_pct is the fraction of the fund's budget allocated to that intervention. "
     "The resulting sample array (100,000 values per intervention) is then passed to the "
     "risk-profile framework, which computes 9 risk-adjusted summaries, and the time-period "
-    "allocation function, which distributes the effect across the six standard time windows."
+    "allocation function, which distributes the effect across four time windows (0–100 years)."
 )
 add_table(doc,
     ["Step", "Operation", "Output"],
@@ -441,14 +436,17 @@ add_table(doc,
          "Multiply by 1,000 ($/1000 → $/1M) and by fund_split_pct",
          "Samples in suffering-years / $1M at fund level"],
         ["3. Time allocation",
-         "Distribute across time periods using effect_start_year and persistence_years",
-         "Samples per time period (t0–t5)"],
+         "Distribute across 4 periods using effect_start_year and persistence_years "
+         "(periods: 0-5, 5-10, 10-20, 20-100 years)",
+         "Fraction per period (period keys: 0_to_5, 5_to_10, 10_to_20, 20_to_100)"],
         ["4. Risk profiles",
          "Apply 9 risk-adjustment functions to the sample array",
          "9 risk-adjusted scalars per time period"],
         ["5. Output",
-         "Write 6 × 9 = 54 values per intervention to aw_combined_dataset.csv",
-         "Standard RP output format for downstream combination"],
+         "Write 4 × 9 = 36 period-allocated columns plus 9 total columns per intervention "
+         "to per-fund CSVs (e.g., ea_awf_dataset.csv, navigation_fund_cagefree_dataset.csv)",
+         "Columns named {rp}_{period_key} (e.g., neutral_0_to_5, ambiguity_20_to_100) "
+         "and total_{rp} (e.g., total_neutral). Standard RP format for downstream combination."],
     ],
 )
 
@@ -462,7 +460,7 @@ add_bullet(doc,
     "better evidence becomes available.",
     bold_prefix="Derived interventions. ")
 add_bullet(doc,
-    "Wild animal welfare has no CCM model. The current model is a rough placeholder "
+    "The wild animal welfare model is a rough placeholder "
     "based on rodent and invertebrate analogues. It should be treated as highly speculative.",
     bold_prefix="Wild animal welfare. ")
 add_bullet(doc,
@@ -471,8 +469,7 @@ add_bullet(doc,
     "and philosophical questions about animal sentience.",
     bold_prefix="Moral weights not applied. ")
 add_bullet(doc,
-    "The chicken estimate is based on RP analyst estimates, not the published CCM. "
-    "It should be reviewed whenever the underlying CCM model is updated.",
+    "The chicken estimate is based on RP analyst estimates and should be reviewed periodically as new field evidence becomes available.",
     bold_prefix="Chicken override. ")
 add_bullet(doc,
     "Invertebrate and wild animal welfare estimates have zero-inflated distributions "

@@ -39,9 +39,9 @@ effects_distribution_dict = {
 
 temporal_breakdown_by_type_dict = {
     'YLDs_averted': 
-        {'0-5 years': 0.0442, '5-10 years': 0.0806, '10-20 years': 0.1891, '20-100 years': 0.6862, '100-500 years': 0, '500+ years': 0},
+        {'0-5 years': 0.0499, '5-10 years': 0.0891, '10-20 years': 0.2073, '20-100 years': 0.6537, '100-500 years': 0, '500+ years': 0},
     'life_years_saved': 
-        {'0-5 years': 0.0139, '5-10 years': 0.0209, '10-20 years': 0.0759, '20-100 years': 0.8894, '100-500 years': 0, '500+ years': 0},
+        {'0-5 years': 0.0331, '5-10 years': 0.0496, '10-20 years': 0.1210, '20-100 years': 0.7964, '100-500 years': 0, '500+ years': 0},
     'income_doublings': 
         {'0-5 years': 0.0123, '5-10 years': 0.0307, '10-20 years': 0.1736, '20-100 years': 0.7834, '100-500 years': 0, '500+ years': 0},
 }

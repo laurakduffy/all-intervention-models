@@ -129,6 +129,7 @@ def _years_in_period(persistence, start, end):
 def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
     """Compute sub-extinction effect rows using Monte Carlo sampling with stratification."""
     p_harm = profile.get("p_harm", 0.0)
+    p_zero = profile.get("p_zero", 0.0)
     harm_multiplier = profile.get("harm_multiplier", 1.0)
     tiers = profile.get("sub_extinction_tiers", [])
     if not tiers:
@@ -174,26 +175,37 @@ def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
     rel_rr_samples = []
     persistence_samples = []
     shared_causes_harm = []
+    shared_causes_zero = []
 
     for i, (rel_rr, pers) in enumerate(combos):
         n_in_combo = stratum_counts[i]
-        
+
         rel_rr_samples.extend([rel_rr] * n_in_combo)
         persistence_samples.extend([pers] * n_in_combo)
-        
-        # Probabilistic rounding for exact p_harm
-        n_harmful_expected = n_in_combo * p_harm
-        n_harmful = int(n_harmful_expected)
-        if np.random.random() < (n_harmful_expected - n_harmful):
-            n_harmful += 1
-        
-        harm_mask = np.array([True] * n_harmful + [False] * (n_in_combo - n_harmful))
-        np.random.shuffle(harm_mask)
-        shared_causes_harm.extend(harm_mask)
-    
+
+        # Three-category assignment: zero, positive, harm
+        # Derive n_positive as remainder to guarantee total == n_in_combo
+        n_harm = int(n_in_combo * p_harm)
+        n_zero = int(n_in_combo * p_zero)
+        remainder_harm = n_in_combo * p_harm - n_harm
+        remainder_zero = n_in_combo * p_zero - n_zero
+
+        rand_val = np.random.random()
+        if rand_val < remainder_harm:
+            n_harm += 1
+        elif rand_val < remainder_harm + remainder_zero:
+            n_zero += 1
+        n_positive = n_in_combo - n_harm - n_zero
+
+        effects = np.array([2] * n_harm + [0] * n_zero + [1] * n_positive, dtype=np.int8)
+        np.random.shuffle(effects)
+        shared_causes_harm.extend(effects == 2)
+        shared_causes_zero.extend(effects == 0)
+
     rel_rr_samples = np.array(rel_rr_samples)
     persistence_samples = np.array(persistence_samples)
     shared_causes_harm = np.array(shared_causes_harm)
+    shared_causes_zero = np.array(shared_causes_zero)
 
     for tier in tiers:
         p_annual = 1 - (1 - tier["p_10yr"]) ** (1 / 10)
@@ -204,6 +216,7 @@ def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
             * adj * discount
         )
         
+        annual_evs = np.where(shared_causes_zero, 0.0, annual_evs)
         annual_evs = np.where(shared_causes_harm, -annual_evs * harm_multiplier, annual_evs)
         
         horizon_data = {}
@@ -345,7 +358,6 @@ def write_diminishing_returns_csv(fund_results, output_path, verbose=True):
     
     # Header
     rows.append(["project_id"] + [f"${s}M" for s in DR_SPEND_POINTS])
-    rows.append([""] + ["cumulative $M invested"] * len(DR_SPEND_POINTS))
     
     # Data rows - one per fund
     for fr in fund_results:

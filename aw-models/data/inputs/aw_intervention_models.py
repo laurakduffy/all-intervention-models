@@ -1,11 +1,6 @@
 """Intervention estimates: percentiles and samples.
 
-Partially replicates the distribution parameters from the CCM repo
-(rethinkpriorities/cross-cause-cost-effectiveness-model-public)
-at ccm/interventions/animal/animal_interventions.py and
-ccm/interventions/animal/animal_intervention_params.py. 
-
-Other distributions are based on analyst estimates, with documentation found here:
+Distributions are based on analyst estimates, with documentation found here:
 https://docs.google.com/document/d/1Kuu08LFYpjG-wGzt7_QmBLkFTzsv4FaQHYRQKn9p3A8/edit?usp=sharing
 
 This script samples those distributions and writes:
@@ -121,6 +116,7 @@ def create_histogram(arr, title, output_path, bins=100):
     """
     arr = np.asarray(arr)
     zero_frac = np.mean(arr == 0)
+    neg_frac = np.mean(arr < 0)
     pos = arr[arr > 0]
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -151,6 +147,8 @@ def create_histogram(arr, title, output_path, bins=100):
         ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:,.3g}'))
 
     full_title = title
+    if neg_frac > 0.001:
+        full_title += f'\n({neg_frac:.1%} of samples harmful/negative, excluded from log-scale plot)'
     if zero_frac > 0:
         full_title += f'\n({zero_frac:.1%} of samples are zero, excluded from plot)'
 
@@ -179,7 +177,7 @@ chicken_stats = pcts(chicken_sy_per_1000)
 # Source: https://docs.google.com/document/d/1Kuu08LFYpjG-wGzt7_QmBLkFTzsv4FaQHYRQKn9p3A8/edit?tab=t.0
 
 ## Humane Slaughter Intervention
-shrimp_per_dollar_per_yr_slaughter = sample_lognorm_ci(800, 2200, lclip=100, rclip = 10e4, credibility=90) # mean around 1400
+shrimp_per_dollar_per_yr_slaughter = sample_lognorm_ci(800, 2200, lclip=100, rclip = 10e4, credibility=90) # mean around 1400/yr
 shrimp_slaughter_persistence = sample_lognorm_ci(6, 15, lclip=1, credibility=90) # mean around 10 years
 shrimp_per_dollar_slaughter = shrimp_per_dollar_per_yr_slaughter * shrimp_slaughter_persistence
 shrimp_hrs_suffering_per_shrimp_conventional_slaughter = sample_lognorm_ci(0.28, 6.4, lclip=0.1, rclip=24, credibility=90) # mean around 2 hours
@@ -207,6 +205,16 @@ shrimp_density_dalys_reduced_per_dollar = shrimp_per_dollar_density * shrimp_den
 
 shrimp_total_stocking_and_sludge_dalys_reduced_per_dollar = shrimp_sludge_dalys_reduced_per_dollar + shrimp_density_dalys_reduced_per_dollar
 
+# Shrimp water quality (sludge removal + stocking density) — chance of harm
+# Harm pathway: improved water conditions may raise farm profitability → higher net stocking densities
+shrimp_wq_p_harm = sample_beta(2, 14)  # Around 12.5%
+shrimp_wq_harm_multiplier = 1.0 # harm magnitude ≈ benefit
+shrimp_wq_is_harmful = (shrimp_wq_p_harm >= np.random.uniform(0, 1, N))
+shrimp_wq_sign = np.where(shrimp_wq_is_harmful, -shrimp_wq_harm_multiplier, 1.0)
+shrimp_total_stocking_and_sludge_dalys_reduced_per_dollar = (
+    shrimp_total_stocking_and_sludge_dalys_reduced_per_dollar * shrimp_wq_sign
+)
+
 ## weighted average estimate
 shrimp_avg_dalys_reduced_per_dollar = (shrimp_slaughter_pct_funding * shrimp_dalys_reduced_per_dollar_slaughter
     + (1 - shrimp_slaughter_pct_funding) * shrimp_total_stocking_and_sludge_dalys_reduced_per_dollar
@@ -233,7 +241,6 @@ carp_stats = pcts(carp_sy_per_1000)
 
 # ── BSF (Black Soldier Fly, proxy for invertebrates) ──
 # Source: DEFAULT_BSF_PARAMS except for probability of success and proportion reduced
-# probability of harm not considered
 
 bsf_num_born = sample_norm_ci(200e9, 300e9, lclip=20e9, rclip=1000e9)
 bsf_prop_affected = sample_lognorm_ci(5e-5, 1e-3, lclip=1e-6, rclip=5e-3)
@@ -252,6 +259,17 @@ bsf_annual_averted = (
 ) * bsf_success
 bsf_sy_per_dollar = bsf_annual_averted * bsf_persistence / bsf_cost
 bsf_sy_per_1000 = bsf_sy_per_dollar * 1000
+
+# BSF — chance of harm
+# Harm pathway: reducing invertebrate mortality could cause rebound effects, or the welfare
+# sign for invertebrates may be wrong (harm ≠ suffering reduction)
+# Note: failed samples (bsf_success=0) are already zero; 0 * -multiplier = 0 so only
+# successful interventions can flip to harmful
+bsf_p_harm = sample_beta(2, 13)             # mean ~13%; meaningful uncertainty for invertebrate welfare
+bsf_harm_multiplier = 1.0 
+bsf_is_harmful = (bsf_p_harm >= np.random.uniform(0, 1, N))
+bsf_sign = np.where(bsf_is_harmful, -bsf_harm_multiplier, 1.0)
+bsf_sy_per_1000 = bsf_sy_per_1000 * bsf_sign
 bsf_stats = pcts(bsf_sy_per_1000)
 
 
@@ -300,32 +318,37 @@ wild_invert_stats = pcts(wild_invert_sy_per_1000)
 wild_share_mammals = sample_beta(1, 1) # mean around 50% of wild animal welfare spending on mammals, highly uncertain
 wild_sy_per_1000_mixture_distribution = (wild_share_mammals * wild_mammal_sy_per_1000 + (1 - wild_share_mammals) * wild_invert_sy_per_1000)
 wild_sy_per_1000 = wild_sy_per_1000_mixture_distribution
+
+# Wild Animal Welfare — chance of harm
+# Harm pathway: field-building could fund interventions that increase wild populations with
+# net-negative welfare, or direct interventions (e.g. predator control) could backfire
+wild_p_harm = sample_beta(2, 8)             # mean ~20%; speculative field with real sign uncertainty
+wild_harm_multiplier = 1.0 
+wild_is_harmful = (wild_p_harm >= np.random.uniform(0, 1, N))
+wild_sign = np.where(wild_is_harmful, -wild_harm_multiplier, 1.0)
+wild_sy_per_1000 = wild_sy_per_1000 * wild_sign
 wild_stats = pcts(wild_sy_per_1000)
 
 # ── Derived interventions ──
 
-# Policy advocacy: weighted blend of chicken and shrimp at 50% discount
-policy_blend = 0.5 * (0.6 * chicken_sy_per_1000 + 0.4 * shrimp_sy_per_1000)
+# Policy advocacy: like chickens with 50% discount
+policy_blend = 0.5 *chicken_sy_per_1000
 
-# Movement building: 25% of the same blend as indirect multiplier
-movement = 0.25 * (0.6 * chicken_sy_per_1000 + 0.4 * shrimp_sy_per_1000)
+# Movement building: 25% of chickens
+movement = 0.25 * chicken_sy_per_1000
 
 # ── Write output ──
 
 output = {
     "metadata": {
-        "source": "rethinkpriorities/cross-cause-cost-effectiveness-model-public",
-        "source_files": [
-            "ccm/interventions/animal/animal_interventions.py",
-            "ccm/interventions/animal/animal_intervention_params.py",
-        ],
+        "source": "aw_intervention_models.py",
         "unit": "suffering-years averted per $1000 (pre-moral-weight)",
         "n_samples": N,
         "n_samples_stored": 10000,
         "seed": 42,
         "note": (
             "These are animal suffering-years, not human-equivalent DALYs. "
-            "The CCM applies moral weight adjustments downstream. "
+            "Applies moral weight adjustments downstream. "
             "For this pipeline we use these values directly as 'animal-DALYs' "
             "pending confirmation on which moral weights to apply. "
             "Each intervention includes both percentile summaries (for human readability) "
@@ -335,8 +358,7 @@ output = {
     "interventions": {
         "chicken_corporate_campaigns": {
             "description": "Corporate cage-free and welfare campaigns for chickens",
-            "ccm_method": "Direct override from Laura Duffy estimates",
-            "ccm_distribution": "None",
+            "method": "Direct estimate from Laura Duffy",
             "recipient_type": "birds",
             "species": "chicken",
             "effect_start_year": 1,
@@ -346,7 +368,7 @@ output = {
         },
         "shrimp_welfare": {
             "description": "Shrimp slaughter and welfare interventions",
-            "ccm_method": "Combination of McKay estimates and SWP estimates for shrimp slaughter, stocking density, and sludge removal interventions",
+            "method": "Combination of McKay estimates and SWP estimates for shrimp slaughter, stocking density, and sludge removal interventions",
             "recipient_type": "shrimp",
             "species": "shrimp",
             "effect_start_year": 1,
@@ -355,8 +377,8 @@ output = {
             "samples_per_1000": downsample(shrimp_sy_per_1000),
         },
         "fish_welfare": {
-            "description": "Farmed fish welfare interventions (carp as CCM proxy)",
-            "ccm_method": "Carp/$ from FWI, suffering stats from CCM carp parameters",
+            "description": "Farmed fish welfare interventions (carp as proxy species)",
+            "method": "Carp/$ from FWI, suffering stats from carp parameters",
             "recipient_type": "fish",
             "species": "carp",
             "effect_start_year": 1,
@@ -365,8 +387,8 @@ output = {
             "samples_per_1000": downsample(carp_sy_per_1000),
         },
         "invertebrate_welfare": {
-            "description": "Invertebrate welfare interventions (BSF as CCM proxy)",
-            "ccm_method": "Bottom-up model using BSF parameters",
+            "description": "Invertebrate welfare interventions (BSF as proxy species)",
+            "method": "Bottom-up model using BSF parameters",
             "recipient_type": "non_shrimp_invertebrates",
             "species": "bsf",
             "effect_start_year": 10,
@@ -374,9 +396,9 @@ output = {
             "percentiles_per_1000": bsf_stats,
             "samples_per_1000": downsample(bsf_sy_per_1000),
         },
-        "policy_advocacy_multi_species": {
+        "policy_advocacy": {
             "description": "Policy advocacy affecting multiple farmed species",
-            "ccm_method": "Analyst estimate: weighted average of chicken (60%) and shrimp (40%) CCM estimates at 50% effectiveness discount",
+            "method": "Analyst estimate: chicken corporate campaigns at 50% effectiveness discount",
             "recipient_type": "multiple",
             "species": "multiple",
             "effect_start_year": 4,
@@ -386,7 +408,7 @@ output = {
         },
         "movement_building": {
             "description": "Movement capacity building, infrastructure, mobilization",
-            "ccm_method": "Analyst estimate: 25% of blend of chicken (60%) and shrimp (40%) as indirect multiplier",
+            "method": "Analyst estimate: 25% of chicken corporate campaigns as indirect multiplier",
             "recipient_type": "multiple",
             "species": "multiple",
             "effect_start_year": 4,
@@ -396,7 +418,7 @@ output = {
         },
         "wild_animal_welfare": {
             "description": "Wild animal welfare research and field-building",
-            "ccm_method": "No CCM model available. Roughly modeled as mixture of a wild mammal-focused intervention and a wild insect-focused intervention.",
+            "method": "Analyst estimate: mixture of a wild mammal-focused intervention and a wild insect-focused intervention.",
             "recipient_type": "multiple",
             "species": "wild",
             "effect_start_year": 10,
@@ -435,7 +457,7 @@ np.savez_compressed(
     shrimp_welfare=shrimp_sy_per_1000,
     fish_welfare=carp_sy_per_1000,
     invertebrate_welfare=bsf_sy_per_1000,
-    policy_advocacy_multi_species=policy_blend,
+    policy_advocacy=policy_blend,
     movement_building=movement,
     wild_animal_welfare=wild_sy_per_1000,
 )
@@ -469,10 +491,32 @@ intervention_samples = {
     "shrimp_welfare": shrimp_sy_per_1000,
     "fish_welfare": carp_sy_per_1000,
     "invertebrate_welfare": bsf_sy_per_1000,
-    "policy_advocacy_multi_species": policy_blend,
+    "policy_advocacy": policy_blend,
     "movement_building": movement,
     "wild_animal_welfare": wild_sy_per_1000,
 }
+
+# ── Load fund configurations and compute fund-level weighted CE ──
+funds_dir = os.path.join(os.path.dirname(__file__), "funds")
+_fund_ids = ["ea_awf", "navigation_fund_cagefree", "navigation_fund_general"]
+
+fund_samples = {}
+for _fid in _fund_ids:
+    with open(os.path.join(funds_dir, f"{_fid}.yaml")) as _f:
+        _fcfg = yaml.safe_load(_f)["fund"]
+    _splits = _fcfg["splits"]
+    _total = sum(_splits.values())
+    _splits_norm = {k: v / _total for k, v in _splits.items()}
+    _sy = np.zeros(N)
+    for _key, _w in _splits_norm.items():
+        if _key in intervention_samples and _w > 0:
+            _sy += _w * intervention_samples[_key]
+    fund_samples[_fid] = {
+        "display_name": _fcfg["display_name"],
+        "annual_budget_M": _fcfg.get("annual_budget_M"),
+        "samples": _sy,
+        "splits_normalized": _splits_norm,
+    }
 
 # Generate histograms and collect extended statistics
 extended_stats = []
@@ -516,10 +560,73 @@ with open(csv_path, "w", newline="") as f:
     for row in extended_stats:
         writer.writerow(row)
 
+# ── Fund-level outputs ──
+print("\n" + "=" * 70)
+print("FUND-LEVEL RESULTS")
+print("=" * 70)
+
+fund_output_paths = []
+for fund_id, fdata in fund_samples.items():
+    f_samples = fdata["samples"]
+    display_name = fdata["display_name"]
+
+    print(f"\n  {fund_id}:")
+
+    # Write per-fund statistics CSV — one row per intervention
+    fund_csv_path = os.path.join(outputs_dir, f"{fund_id}_statistics.csv")
+    fund_csv_fieldnames = [
+        "intervention", "description", "split_weight", "mean",
+        "p0_15", "p1", "p2_5", "p10", "p50", "p90", "p97_5", "p99", "p99_85",
+    ]
+    with open(fund_csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fund_csv_fieldnames)
+        writer.writeheader()
+        for ikey, iweight in fdata["splits_normalized"].items():
+            if ikey not in intervention_samples:
+                continue
+            idesc = output["interventions"][ikey]["description"]
+            if iweight == 0:
+                irow = {k: 0 for k in fund_csv_fieldnames}
+            else:
+                iext = extended_pcts(intervention_samples[ikey])
+                irow = {k: iext.get(k) for k in fund_csv_fieldnames if k in iext}
+            writer.writerow({
+                "intervention": ikey,
+                "description": idesc,
+                "split_weight": iweight,
+                **irow,
+            })
+
+    # Write per-fund estimates YAML
+    fund_yaml_path = os.path.join(outputs_dir, f"{fund_id}_estimates.yaml")
+    fund_out = {
+        "metadata": {
+            "fund_id": fund_id,
+            "display_name": display_name,
+            "annual_budget_M": fdata["annual_budget_M"],
+            "unit": "suffering-years averted per $1000 (pre-moral-weight, fund-weighted average)",
+            "note": "Splits normalized to sum to 1 before weighting.",
+        },
+        "percentiles_per_1000": pcts(f_samples),
+        "samples_per_1000": downsample(f_samples),
+    }
+    with open(fund_yaml_path, "w") as f:
+        yaml.dump(fund_out, f, default_flow_style=False, sort_keys=False, width=120)
+
+    fund_output_paths.append((fund_id, fund_yaml_path, fund_csv_path))
+
+    ext = extended_pcts(f_samples)
+    print(f"    Mean: {ext['mean']:,.0f}")
+    print(f"    P50:  {ext['p50']:,.0f}")
+    print(f"    Range: [{ext['p0_15']:,.0f}, {ext['p99_85']:,.0f}]")
+
 print(f"\n{'=' * 70}")
 print(f"OUTPUTS:")
-print(f"  YAML:        {output_path}")
-print(f"  CSV:         {csv_path}")
-print(f"  Histograms:  {histogram_dir}/ ({len(intervention_samples)} images)")
+print(f"  Intervention YAML:  {output_path}")
+print(f"  Intervention CSV:   {csv_path}")
+for fund_id, fyaml, fcsv in fund_output_paths:
+    print(f"  {fund_id} YAML:  {fyaml}")
+    print(f"  {fund_id} CSV:   {fcsv}")
+print(f"  Histograms:         {histogram_dir}/ ({len(intervention_samples)} images)")
 print(f"{'=' * 70}")
 print("\nDone!")

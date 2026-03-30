@@ -1,30 +1,23 @@
 """Build the full effect dataset for the AW fund marginal CE pipeline.
 
-Orchestrates: effects computation -> uncertainty fitting -> risk profiles ->
-diminishing returns -> time allocation -> assembled dataset.
+Orchestrates: effects computation -> risk profiles -> time allocation -> assembled dataset.
 """
 
 import numpy as np
 
 from models.effects import compute_all_effects
-from models.uncertainty import fit_and_draw
 from models.risk_profiles import compute_risk_profiles, RISK_PROFILES
-from models.diminishing_returns import (
-    compute_diminishing_row,
-    find_20pct_threshold,
-    allocate_to_periods,
-    PERIOD_KEYS,
-)
+from models.allocate_to_periods import allocate_to_periods, PERIOD_KEYS
 
-def build_all_effects(fund_key="aw_combined", verbose=False):
+
+def build_all_effects(fund_key="ea_awf", verbose=False):
     """Build the complete effect dataset.
 
     Returns:
         dict with:
             fund_config: fund-level metadata
             rows: list of enriched effect dicts (one per effect)
-            diminishing: diminishing returns data for the fund
-            ccm_metadata: source metadata from CCM extraction
+            metadata: source metadata from intervention estimates
     """
     raw = compute_all_effects(fund_key=fund_key, verbose=verbose)
     fund_config = raw["fund_config"]
@@ -43,49 +36,10 @@ def build_all_effects(fund_key="aw_combined", verbose=False):
 
         if verbose:
             print(f"\n  {effect['effect_id']} (source: {data_source}):")
+            print(f"    Using {len(samples)} empirical samples directly")
 
-        # NEW WORKFLOW: Use samples directly if available
-        if samples is not None:
-            if verbose:
-                print(f"    Using {len(samples)} empirical samples directly (no fitting needed)")
-            draws = np.array(samples, dtype=float)
-            fit = None
-            fit_error = 0.0
-            fit_distribution = "empirical"
-            
-        # OLD WORKFLOW: Fit distribution from percentiles (backward compatibility)
-        else:
-            if verbose:
-                print(f"    Fitting distribution from percentiles (legacy mode)")
-            
-            # Separate mean from percentiles for fitting
-            ccm_mean = pct_dict.pop("mean", None)
-            fit_pcts = {k: v for k, v in pct_dict.items() if k in ("p1", "p5", "p10", "p50", "p90", "p95", "p99")}
+        draws = np.array(samples, dtype=float)
 
-            # If p10 is zero (binary-success interventions), use CCM mean directly
-            zero_heavy = fit_pcts.get("p10", 0) == 0
-            if zero_heavy and ccm_mean and ccm_mean > 0:
-                if verbose:
-                    print(f"      Zero-heavy distribution (p10=0). Using CCM mean={ccm_mean:,.0f}")
-                draws = np.array([ccm_mean] * 100)
-                fit = None
-                fit_error = 0.0
-                fit_distribution = "point_estimate"
-            else:
-                try:
-                    fit, draws = fit_and_draw(fit_pcts, n_samples=10000, verbose=verbose)
-                    fit_error = fit.error
-                    fit_distribution = fit.name
-                except (ValueError, Exception) as e:
-                    if verbose:
-                        print(f"      Fitting failed: {e}. Using point estimates.")
-                    mid = fit_pcts.get("p50", ccm_mean or 0)
-                    draws = np.array([mid] * 100)
-                    fit = None
-                    fit_error = 0.0
-                    fit_distribution = "point_estimate"
-
-        # Compute risk profiles from draws (same for both workflows)
         risk = compute_risk_profiles(draws)
 
         period_fracs = allocate_to_periods(
@@ -103,8 +57,6 @@ def build_all_effects(fund_key="aw_combined", verbose=False):
             "effect_start_year": effect["effect_start_year"],
             "persistence_years": effect["persistence_years"],
             "data_source": data_source,
-            "fit_distribution": fit_distribution,
-            "fit_error": fit_error,
         }
 
         # Add percentiles to output for reporting (if available)
@@ -136,5 +88,5 @@ def build_all_effects(fund_key="aw_combined", verbose=False):
     return {
         "fund_config": fund_config,
         "rows": rows,
-        "ccm_metadata": raw.get("ccm_metadata", {}),
+        "metadata": raw.get("metadata", {}),
     }

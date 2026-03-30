@@ -26,7 +26,7 @@ fund:
   splits:
     chicken_corporate_campaigns: 0.556
     movement_building: 0.241
-    policy_advocacy_multi_species: 0.121
+    policy_advocacy: 0.121
     fish_welfare: 0.038
     shrimp_welfare: 0.016
     invertebrate_welfare: 0.014

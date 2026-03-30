@@ -21,7 +21,8 @@ if DIMINISHING_RETURNS_YRS != YEARS_LOOK_AHEAD:
 
 # combine the diminishing returns data from the three models into a single dataframe
 gw_diminishing_returns = pd.read_csv('gw-models/givewell_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
-aw_diminishing_returns = pd.read_csv('aw-models/outputs/aw_combined_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
+ea_awf_diminishing_returns = pd.read_csv('aw-models/data/inputs/ea_awf_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
+navigation_fund_diminishing_returns = pd.read_csv('aw-models/data/inputs/navigation_fund_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
 gcr_diminishing_returns = pd.read_csv('gcr-models/diminishing_returns/gcr_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
 leaf_diminishing_returns = pd.read_csv('leaf-models/leaf_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
 
@@ -29,7 +30,9 @@ FUND_NAME_MAP = {
     'sentinel': 'sentinel_bio',
     'longview_nuclear': 'longview_nuclear',
     'longview_ai': 'longview_ai',
-    'aw_combined': 'animal_welfare_funds',
+    'ea_awf': 'ea_awf', 
+    'navigation_fund_general': 'navigation_fund_general',
+    'navigation_fund_cagefree': 'navigation_fund_cagefree',
     'givewell': 'givewell', 
     'leaf': 'leaf'
 }
@@ -39,7 +42,9 @@ PROJECT_METADATA = {
     "sentinel_bio": {"name": "Biorisk fund (Sentinel bio)", "color": "#85E4FF"},
     "longview_nuclear": {"name": "Nuclear fund (Longview)", "color": "#e74c3c"},
     "longview_ai": {"name": "AI fund (Longview)", "color": "#85E4FF"},
-    "animal_welfare_funds": {"name": "Animal Welfare fund (combined)", "color": "#85E4FF"},
+    "ea_awf": {"name": "EA Animal Welfare Fund", "color": "#85E4FF"},
+    "navigation_fund_general": {"name": "The Navigation Fund - General", "color": "#85E4FF"},
+    "navigation_fund_cagefree": {"name": "The Navigation Fund - Cage-Free", "color": "#85E4FF"},
     "leaf": {'name': "LEAF", "color": "#85E4FF"},
 }
 
@@ -69,7 +74,7 @@ RECIPIENT_TYPE_MAP = {
 
 RECIPIENT_TYPE_OVERRIDES_BY_EFFECT = {
     'movement_building': 'chickens_birds',
-    'policy_advocacy_multi_species': 'chickens_birds',
+    'policy_advocacy': 'chickens_birds',
     'wild_animal_welfare': 'non_shrimp_invertebrates',
 }
 
@@ -91,19 +96,24 @@ TIME_MAPPINGS = [
 
 
 diminishing_returns_df = pd.concat([gw_diminishing_returns, \
-                                    aw_diminishing_returns, \
+                                    ea_awf_diminishing_returns, \
+                                    navigation_fund_diminishing_returns, \
                                     gcr_diminishing_returns, \
                                     leaf_diminishing_returns], ignore_index=True)
 
 # upload the risk scores from the three models into a single dataframe
 gw_risk_scores = pd.read_csv('gw-models/gw_risk_adjusted.csv')
-aw_risk_scores = pd.read_csv('aw-models/outputs/aw_combined_dataset.csv')
+ea_awf_risk_scores = pd.read_csv('aw-models/outputs/ea_awf_dataset.csv')
+navigation_fund_general_risk_scores = pd.read_csv('aw-models/outputs/navigation_fund_general_dataset.csv')
+navigation_fund_cagefree_risk_scores = pd.read_csv('aw-models/outputs/navigation_fund_cagefree_dataset.csv')
 gcr_risk_scores = pd.read_csv('gcr-models/gcr_output.csv', skiprows=1)
 leaf_risk_scores = pd.read_csv('leaf-models/leaf_risk_adjusted.csv')
 
 
 risk_scores_df = pd.concat([gw_risk_scores, \
-                            aw_risk_scores, \
+                            ea_awf_risk_scores, \
+                            navigation_fund_general_risk_scores, \
+                            navigation_fund_cagefree_risk_scores, \
                             gcr_risk_scores, 
                             leaf_risk_scores], ignore_index=True)
 
@@ -268,4 +278,7 @@ for pid, proj in projects_data.items():
 normalized_df = pd.DataFrame(rows)
 normalized_df.to_csv('all_risk_adjusted.csv', index=False)
 print("Risk-adjusted data exported to all_risk_adjusted.csv")
+
+diminishing_returns_df.to_csv('all_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS), index=False)
+print("Diminishing returns data exported to all_diminishing_returns_{}yr.csv".format(DIMINISHING_RETURNS_YRS))
 

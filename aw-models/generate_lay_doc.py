@@ -1,7 +1,7 @@
 """Generate a plain-language Word (.docx) overview of the Animal Welfare model.
 
 Intended for an intelligent non-technical audience. Parameter values are drawn
-from the YAML fund configs and CCM estimates so the document stays in sync.
+from the YAML fund configs and intervention estimates so the document stays in sync.
 """
 
 import os
@@ -28,11 +28,13 @@ def _load_yaml(path):
     with open(path) as f:
         return yaml.safe_load(f)
 
-_ccm = _load_yaml(os.path.join(_DATA_DIR, "aw_model_intervention_estimates.yaml"))
-_combined = _load_yaml(os.path.join(_DATA_DIR, "funds", "aw_combined.yaml"))["fund"]
-_ea_awf   = _load_yaml(os.path.join(_DATA_DIR, "funds", "ea_awf.yaml"))["fund"]
+_estimates = _load_yaml(os.path.join(_DATA_DIR, "aw_model_intervention_estimates.yaml"))
+_combined  = _load_yaml(os.path.join(_DATA_DIR, "funds", "aw_combined.yaml"))["fund"]
+_ea_awf    = _load_yaml(os.path.join(_DATA_DIR, "funds", "ea_awf.yaml"))["fund"]
+_nav_cf    = _load_yaml(os.path.join(_DATA_DIR, "funds", "navigation_fund_cagefree.yaml"))["fund"]
+_nav_gen   = _load_yaml(os.path.join(_DATA_DIR, "funds", "navigation_fund_general.yaml"))["fund"]
 
-_ccm_interventions = _ccm["interventions"]
+_interventions = _estimates["interventions"]
 
 # ---------------------------------------------------------------------------
 # Word helpers
@@ -153,10 +155,8 @@ add_body(doc,
 add_body(doc,
     "Rethink Priorities evaluates animal welfare funds on behalf of Anthropic staff "
     "considering where to direct their personal philanthropy. This model estimates how many "
-    "animal suffering-years are averted per $1 million donated to animal welfare funds. It "
-    "uses Rethink Priorities' Cross-Cause Cost-Effectiveness Model (CCM) — one of the most "
-    "detailed empirical estimates of animal welfare intervention effectiveness available — "
-    "as its primary data source."
+    "animal suffering-years are averted per $1 million donated to animal welfare funds, "
+    "using analyst-derived cost-effectiveness distributions for each intervention type."
 )
 add_callout(doc,
     "The numbers in this model are in 'animal suffering-years averted' — not yet converted "
@@ -170,23 +170,22 @@ add_callout(doc,
 # ---------------------------------------------------------------------------
 add_heading(doc, "2.  The funds modelled", 1)
 add_body(doc,
-    "Two funds are currently modelled, though the primary output used in downstream analysis "
-    "is the Combined AW estimate, which represents the marginal impact of additional funding "
-    "across all EA animal welfare funders."
+    "Three funds are currently modelled:"
 )
 add_table(doc,
-    ["Fund", "Annual budget", "Room for more funding", "Description"],
+    ["Fund", "Annual budget", "Description"],
     [
-        [_combined["display_name"],
-         f"${_combined['annual_budget_M']}M/yr",
-         f"${_combined['room_for_more_M']}M",
-         "Weighted aggregate of all EA AW funds; reflects how the next marginal dollar "
-         "would likely be deployed across the field"],
         [_ea_awf["display_name"],
          f"${_ea_awf['annual_budget_M']}M/yr",
-         f"${_ea_awf['room_for_more_M']}M",
          "EA Animal Welfare Fund; a re-granting fund that distributes to effective "
          "animal welfare organisations worldwide"],
+        [_nav_cf["display_name"],
+         f"${_nav_cf['annual_budget_M']}M/yr",
+         "Navigation Fund cage-free sub-portfolio; focused on corporate and political "
+         "strategies to end cages for layer hens"],
+        [_nav_gen["display_name"],
+         f"${_nav_gen['annual_budget_M']}M/yr",
+         "Navigation Fund general farm animal grantmaking across species and regions"],
     ],
 )
 
@@ -205,7 +204,7 @@ _split_display = {
         "Lobbying companies to adopt cage-free, higher-welfare standards for egg-laying hens"),
     "movement_building":           ("Movement building",
         "Growing the effective animal advocacy community through media, education, and outreach"),
-    "policy_advocacy_multi_species": ("Policy advocacy",
+    "policy_advocacy": ("Policy advocacy",
         "Legislative and regulatory campaigns for multi-species welfare protections"),
     "fish_welfare":                ("Fish welfare",
         "Improving conditions for farmed fish — stunning, stocking density, water quality"),
@@ -221,7 +220,7 @@ combined_splits = _combined["splits"]
 table_rows = []
 for key, split in sorted(combined_splits.items(), key=lambda x: -x[1]):
     label, desc = _split_display.get(key, (key, ""))
-    ccm = _ccm_interventions.get(key, {})
+    ccm = _interventions.get(key, {})
     p50 = ccm.get("percentiles_per_1000", {}).get("p50")
     mean = ccm.get("percentiles_per_1000", {}).get("mean")
     persist = ccm.get("persistence_years", "?")
@@ -251,32 +250,31 @@ add_note(doc,
 # ---------------------------------------------------------------------------
 # 4. Where the cost-effectiveness estimates come from: the CCM
 # ---------------------------------------------------------------------------
-add_heading(doc, "4.  Where the estimates come from: the Cross-Cause Model", 1)
+add_heading(doc, "4.  Where the estimates come from", 1)
 add_body(doc,
-    "The effectiveness numbers come from Rethink Priorities' Cross-Cause Cost-Effectiveness "
-    "Model (CCM). The CCM synthesises the best available evidence on each intervention — "
+    "The effectiveness numbers come from analyst-derived distributions built by Rethink "
+    "Priorities. For each intervention, the model synthesises the best available evidence — "
     "field studies, expert surveys, and meta-analyses — and produces a full distribution of "
     "plausible cost-effectiveness estimates, not just a single point."
 )
 add_body(doc,
-    "For each intervention, the CCM provides 100,000 random samples of 'animal suffering-years "
-    "averted per $1,000 spent.' These samples capture everything we know and don't know about "
+    "For each intervention, 100,000 random samples of 'animal suffering-years averted per "
+    "$1,000 spent' are drawn. These samples capture everything we know and don't know about "
     "how effective each intervention is. The wide spreads reflect genuine uncertainty — we "
     "simply don't have precise data on, for example, exactly how many chickens are affected "
     "by a successful cage-free campaign."
 )
 add_callout(doc,
-    "These are animal suffering-years, not human-equivalent DALYs. The CCM assigns each "
-    "species a 'sentience weight' based on evidence about their capacity for conscious "
-    "experience. This model uses the pre-weight values; the cross-cause moral weighting "
-    "step (applied downstream) converts them to a comparable basis with human welfare."
+    "These are animal suffering-years, not human-equivalent DALYs. This model uses "
+    "pre-moral-weight values; the cross-cause moral weighting step (applied downstream) "
+    "converts them to a comparable basis with human welfare."
 )
 
-# Illustrative uncertainty table using CCM data
-add_body(doc, "To give a sense of the uncertainty involved, here are CCM estimates for the two largest interventions:")
+# Illustrative uncertainty table
+add_body(doc, "To give a sense of the uncertainty involved, here are estimates for the two largest interventions:")
 for key in ["chicken_corporate_campaigns", "movement_building"]:
-    ccm = _ccm_interventions.get(key, {})
-    pcts = ccm.get("percentiles_per_1000", {})
+    est = _interventions.get(key, {})
+    pcts = est.get("percentiles_per_1000", {})
     label, _ = _split_display.get(key, (key, ""))
     split = combined_splits.get(key, 1.0)
     if pcts:
@@ -289,7 +287,7 @@ for key in ["chicken_corporate_campaigns", "movement_building"]:
                 ["90th (optimistic)",  f"{pcts.get('p90', '?'):,.0f}", f"{pcts.get('p90', 0) * 1000 * split:,.0f}"],
             ],
         )
-        add_body(doc, f"Table: {label} (CCM uncertainty at fund share {split:.0%})")
+        add_body(doc, f"Table: {label} (uncertainty at fund share {split:.0%})")
         doc.add_paragraph()
 
 # ---------------------------------------------------------------------------
@@ -302,7 +300,7 @@ add_body(doc,
     "shifts. Their effects take time to materialise and persist for a limited window."
 )
 add_body(doc,
-    "Each CCM intervention specifies two timing parameters:"
+    "Each intervention specifies two timing parameters:"
 )
 add_bullet(doc, "Start year — when the effect first kicks in (typically year 1 for most interventions).", bold_prefix="Effect start. ")
 add_bullet(doc, "Persistence — how many years the effect continues (10–15 years for most AW interventions).", bold_prefix="Duration. ")
@@ -311,17 +309,18 @@ add_table(doc,
     ["Intervention", "Effect starts", "Lasts", "Which time windows receive weight"],
     [
         [_split_display.get(k, (k,))[0],
-         f"Year {_ccm_interventions[k].get('effect_start_year', 1)}",
-         f"{_ccm_interventions[k].get('persistence_years', '?')} years",
+         f"Year {_interventions[k].get('effect_start_year', 1)}",
+         f"{_interventions[k].get('persistence_years', '?')} years",
          "0–5 yr, 5–10 yr, 10–20 yr (proportionally)"]
-        for k in combined_splits if k in _ccm_interventions
+        for k in combined_splits if k in _interventions
     ],
 )
 add_note(doc,
-    "All current AW interventions have their effects entirely within the first 20 years. "
-    "The t3 (20–100 yr), t4 (100–500 yr), and t5 (500+ yr) columns are zero for all "
-    "AW interventions. This contrasts sharply with GCR models, where the entire value "
-    "of survival extends across all of human (and post-human) history."
+    "The AW model uses four time windows: 0–5, 5–10, 10–20, and 20–100 years. All current "
+    "AW interventions have their effects within this 100-year horizon — the model does not "
+    "include a 100–500 year or 500+ year window for animal welfare. This contrasts sharply "
+    "with GCR models, where the entire value of survival extends across all of human (and "
+    "post-human) history."
 )
 
 # ---------------------------------------------------------------------------
@@ -331,21 +330,36 @@ add_heading(doc, "6.  What happens if we give more?", 1)
 add_body(doc,
     "Animal welfare organisations have limited absorptive capacity — there are only so many "
     "high-quality cage-free campaigns to run, so many lobbyists to hire, and so much movement "
-    "infrastructure to build. The model therefore adjusts cost-effectiveness downward as the "
-    "total budget grows:"
+    "infrastructure to build. The model now includes a formal diminishing returns curve for the "
+    "combined AW fund, based on analyst estimates of how marginal cost-effectiveness changes "
+    "as total funding increases."
 )
 
-anchors = _combined.get("diminishing_anchors", [])
-add_table(doc,
-    ["Budget level (cumulative)", "Marginal CE as fraction of baseline"],
-    [[f"${a[0]}M", f"{a[1]:.0%}"] for a in anchors],
-)
+# Build diminishing returns table from aw_combined anchors
+_dr_anchors = _combined.get("diminishing_anchors", [])
+_rfmf = _combined.get("room_for_more_M", "?")
 add_body(doc,
-    "For example, the combined AW fund maintains close to baseline cost-effectiveness up to "
-    "about $55M, then drops more steeply as the field becomes saturated relative to what can "
-    "be productively deployed. Beyond the final anchor point, the model assumes cost-effectiveness "
-    "falls as 1/(budget scale), reflecting increasing difficulty of finding additional high-quality "
-    "opportunities."
+    f"The curve is parameterised by anchor points that specify CE as a fraction of baseline "
+    f"at different cumulative spend levels. The combined AW fund has an estimated room for more "
+    f"funding (RFMF) of ${_rfmf}M — this is the total amount the market can absorb while "
+    f"maintaining meaningful cost-effectiveness."
+)
+
+if _dr_anchors:
+    add_table(doc,
+        ["Cumulative spend", "Marginal CE (relative to baseline)"],
+        [[f"${a[0]:.0f}M", f"{a[1]:.0%}"] for a in _dr_anchors],
+    )
+
+add_body(doc,
+    "For example, if you are the only funder up to $10M, you get the full (baseline) CE. "
+    "As total giving scales toward the RFMF and beyond, the marginal impact of each additional "
+    "dollar declines. Beyond the last anchor, the curve continues to fall following a 1/x "
+    "hyperbolic trajectory — cost-effectiveness keeps declining but never reaches zero."
+)
+add_note(doc,
+    "These anchor points are rough analyst estimates based on conversations with fund managers "
+    "about absorptive capacity. They should be treated as indicative rather than precise."
 )
 
 # ---------------------------------------------------------------------------
@@ -353,7 +367,7 @@ add_body(doc,
 # ---------------------------------------------------------------------------
 add_heading(doc, "7.  Nine views of the same uncertainty", 1)
 add_body(doc,
-    "Because the CCM provides 100,000 samples per intervention (capturing the full "
+    "Because the model provides 100,000 samples per intervention (capturing the full "
     "distribution from pessimistic to optimistic), we can ask: how should we summarise "
     "this distribution? Different ethical frameworks disagree."
 )
@@ -392,7 +406,7 @@ add_bullet(doc,
     "cause area. The model cannot resolve that debate.",
     bold_prefix="Moral weights not yet applied. ")
 add_bullet(doc,
-    "CCM estimates are derived from limited empirical evidence. Corporate campaigns in particular "
+    "Estimates are derived from limited empirical evidence. Corporate campaigns in particular "
     "rely heavily on extrapolation from a small number of documented successes. The wide "
     "confidence intervals reflect genuine ignorance, not well-characterised uncertainty.",
     bold_prefix="Evidence base is thin. ")
@@ -417,34 +431,28 @@ add_bullet(doc,
 # ---------------------------------------------------------------------------
 add_heading(doc, "9.  Summary at a glance", 1)
 
-combined_mean_total = sum(
-    _ccm_interventions.get(k, {}).get("percentiles_per_1000", {}).get("mean", 0)
-    * 1000 * v
-    for k, v in combined_splits.items()
-    if k in _ccm_interventions
-)
 add_table(doc,
-    ["Item", "Combined AW fund", "EA Animal Welfare Fund"],
+    ["Item", "EA AWF", "Nav Fund — Cage-Free", "Nav Fund — General"],
     [
         ["Annual budget",
-         f"${_combined['annual_budget_M']}M",
-         f"${_ea_awf['annual_budget_M']}M"],
-        ["Room for more funding",
-         f"${_combined['room_for_more_M']}M",
-         f"${_ea_awf['room_for_more_M']}M"],
+         f"${_ea_awf['annual_budget_M']}M",
+         f"${_nav_cf['annual_budget_M']}M",
+         f"${_nav_gen['annual_budget_M']}M"],
         ["Number of interventions modelled",
-         str(len(combined_splits)),
-         str(sum(1 for v in _ea_awf["splits"].values() if v and v > 0))],
-        ["Largest single intervention (by budget share)",
-         f"Chicken corporate campaigns ({combined_splits.get('chicken_corporate_campaigns', 0):.0%})",
-         f"Chicken corporate campaigns ({_ea_awf['splits'].get('chicken_corporate_campaigns', 0):.0%})"],
-        ["CCM samples per intervention",
+         str(sum(1 for v in _ea_awf["splits"].values() if v and v > 0)),
+         str(sum(1 for v in _nav_cf["splits"].values() if v and v > 0)),
+         str(sum(1 for v in _nav_gen["splits"].values() if v and v > 0))],
+        ["Largest intervention (by share)",
+         max(_ea_awf["splits"], key=lambda k: _ea_awf["splits"][k]).replace("_", " "),
+         max(_nav_cf["splits"], key=lambda k: _nav_cf["splits"][k]).replace("_", " "),
+         max(_nav_gen["splits"], key=lambda k: _nav_gen["splits"][k]).replace("_", " ")],
+        ["Samples per intervention",
+         "100,000 (full) or 10,000 (fallback)",
          "100,000 (full) or 10,000 (fallback)",
          "100,000 (full) or 10,000 (fallback)"],
-        ["Time horizon of effects",
-         "0–20 years",
-         "0–20 years"],
+        ["Time horizon of effects", "0–20 years", "0–20 years", "0–20 years"],
         ["Units",
+         "Animal suffering-years / $1M (pre-moral-weight)",
          "Animal suffering-years / $1M (pre-moral-weight)",
          "Animal suffering-years / $1M (pre-moral-weight)"],
     ],

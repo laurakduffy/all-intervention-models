@@ -63,6 +63,7 @@ for item in [
     "1. Root-Level Files",
     "   risk_profiles.py",
     "   combine_data.py",
+    "   run_all.py",
     "   validate_output.py",
     "2. GCR Models (gcr-models/)",
     "   gcr_model.py",
@@ -70,12 +71,14 @@ for item in [
     "   export_rp_csv.py",
     "3. GiveWell Models (gw-models/)",
     "   gw_cea_modeling.py",
-    "4. Animal Welfare Models (aw-models/)",
+    "4. LEAF Models (leaf-models/)",
+    "   leaf_cea_model.py",
+    "5. Animal Welfare Models (aw-models/)",
     "   src/models/effects.py",
-    "   src/models/diminishing_returns.py",
+    "   src/models/allocate_to_periods.py",
     "   src/pipeline/build_dataset.py",
     "   src/pipeline/export.py",
-    "5. Things Worth Vetting",
+    "6. Things Worth Vetting",
 ]:
     body(doc, item)
 
@@ -152,8 +155,9 @@ body(doc,
 )
 body(doc,
     "Key constants at the top: BUDGET_M=897 (total portfolio budget in $M), "
-    "INCREMENT_SIZE=10 ($M steps for the front-end slider), DIMINISHING_RETURNS_YRS=3 "
-    "(must match YEARS_LOOK_AHEAD in fund_profiles.py — a mismatch raises a hard error on startup)."
+    "INCREMENT_SIZE=10 ($M steps for the front-end slider), DIMINISHING_RETURNS_YRS=1 "
+    "(must match YEARS_LOOK_AHEAD in fund_profiles.py — a mismatch raises a hard error on startup). "
+    "Note: this was previously 3 (a 3-year look-ahead); it is now 1 (a 1-year look-ahead)."
 )
 
 fn(doc, "parse_diminishing_returns(df)",
@@ -171,11 +175,15 @@ fn(doc, "parse_effects(df)",
     "(e.g., movement_building is always chickens_birds regardless of the generic type field); "
     "(3) builds the 6×8 values matrix (6 time periods × 8 risk profiles) by trying both the "
     "standard {rp}_{t0} column naming and the AW model's {rp}_{0_to_5} naming — whichever "
-    "exists in the dataframe; "
+    "exists in the dataframe; for AW funds with only 4 periods (0–100 years), the t4 and t5 "
+    "entries are set to 0.0 by the absence of those columns; "
     "(4) applies NEAR_TERM_XRISK_OVERRIDES to force Sentinel Bio and Longview Nuclear to False "
     "regardless of what's in the CSV. After the function, the top-level code merges "
     "sub-extinction tier sub-projects (e.g., sentinel_bio_100m_1b) back into their parent "
-    "projects and deletes the sub-fund entries."
+    "projects and deletes the sub-fund entries. "
+    "Note: combine_data.py reads AW diminishing returns per-fund (ea_awf_diminishing_returns_1yr.csv "
+    "and navigation_fund_diminishing_returns_1yr.csv) and the LEAF fund "
+    "(leaf_diminishing_returns_1yr.csv) in addition to GW and GCR files."
 )
 
 # ── validate_output.py ────────────────────────────────────────────────────────
@@ -216,10 +224,26 @@ fn(doc, "main()",
 )
 
 note(doc,
-    "The validator still references the old filenames output_data.json (without the _3yr suffix) "
+    "The validator still references the old filenames output_data.json (without the year suffix) "
     "and the pre-year-suffix DR CSV paths. It will currently fail to find the files unless you "
     "update those paths. Also, the RISK_PROFILES list in this file has 8 entries — it is missing "
     "dmreu — so dmreu values are never validated."
+)
+
+# ── run_all.py ────────────────────────────────────────────────────────────────
+
+h2(doc, "run_all.py")
+body(doc,
+    "Top-level convenience script that runs every model pipeline in sequence with a single command. "
+    "Calls subprocess.run() on each script in order: "
+    "(1) aw-models/data/inputs/aw_intervention_models.py — regenerates CCM intervention samples; "
+    "(2) aw-models/run.py — runs the AW fund pipeline for all three funds; "
+    "(3) gw-models/gw_cea_modeling.py — runs the GiveWell model; "
+    "(4) leaf-models/leaf_cea_model.py — runs the LEAF model; "
+    "(5) gcr-models/export_rp_csv.py — runs all three GCR funds; "
+    "(6) combine_data.py — assembles everything into output_data_1yr.json and all_risk_adjusted.csv. "
+    "Each script is run with check=True, so a failure in any step aborts the rest. "
+    "This is the recommended way to refresh all data after changing any parameters."
 )
 
 doc.add_page_break()
@@ -523,6 +547,7 @@ doc.add_page_break()
 
 h1(doc, "3. GiveWell Models (gw-models/)")
 
+
 h2(doc, "gw_cea_modeling.py")
 body(doc,
     "Generates 10,000 simulated estimates of GiveWell's portfolio cost-effectiveness broken "
@@ -605,10 +630,48 @@ fn(doc, "apply_risk_adjustments_to_simulations(effect_per_M_by_time)",
 doc.add_page_break()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 4 — ANIMAL WELFARE MODELS
+# SECTION 4 — LEAF MODELS
 # ══════════════════════════════════════════════════════════════════════════════
 
-h1(doc, "4. Animal Welfare Models (aw-models/)")
+h1(doc, "4. LEAF Models (leaf-models/)")
+
+h2(doc, "leaf_cea_model.py")
+body(doc,
+    "Generates 10,000 simulated estimates of LEAF's cost-effectiveness broken down by effect "
+    "type (YLDs averted, life-years saved, income doublings) and time period, then applies all "
+    "9 risk profiles. The structure mirrors gw_cea_modeling.py closely."
+)
+body(doc,
+    "Key constants: N_SAMPLES = 10,000. Three GEV (Generalized Extreme Value) distributions — "
+    "one per effect type — parameterized by shape, location, and scale. These were fit to "
+    "analyst estimates of LEAF's impact distribution."
+)
+
+fn(doc, "sample_impacts_per_m()",
+    "Draws 10,000 samples from each GEV distribution (YLDs averted, life-years saved, income "
+    "doublings). Returns a dict of effect_type → sample array. The GEV distribution is used "
+    "because LEAF's impact distribution is expected to have a heavier right tail than a normal "
+    "or lognormal distribution."
+)
+body(doc,
+    "Temporal breakdown: unlike GiveWell (heavily front-loaded), LEAF's effects are more "
+    "back-loaded. For example, life-years saved allocates ~80% to the 20–100 year window. "
+    "This reflects that LEAF's longevity research is expected to compound over decades. "
+    "The model applies the same 6-period structure as GiveWell and GCR (0-5, 5-10, 10-20, "
+    "20-100, 100-500, 500+ years), with 100-500 and 500+ always 0."
+)
+body(doc,
+    "Output: leaf_risk_adjusted.csv (standard RP format), leaf_diminishing_returns_1yr.csv, "
+    "histograms in leaf-models/histograms/, and leaf-models/summary_statistics.csv."
+)
+
+doc.add_page_break()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 5 — ANIMAL WELFARE MODELS
+# ══════════════════════════════════════════════════════════════════════════════
+
+h1(doc, "5. Animal Welfare Models (aw-models/)")
 
 h2(doc, "src/models/effects.py")
 body(doc,
@@ -617,9 +680,10 @@ body(doc,
     "rest of the pipeline."
 )
 
-fn(doc, "load_ccm_estimates(path)",
-    "Reads aw_model_intervention_estimates.yaml, which contains CCM-derived cost-effectiveness "
-    "distributions for each AW intervention (as percentiles and/or pre-drawn samples)."
+fn(doc, "load_intervention_estimates(path)",
+    "Reads aw_model_intervention_estimates.yaml, which contains analyst-derived cost-effectiveness "
+    "distributions for each AW intervention (percentile summaries and 10k downsampled samples). "
+    "The full 100k samples are stored separately in the .npz file."
 )
 
 fn(doc, "load_full_samples(path)",
@@ -645,89 +709,85 @@ fn(doc, "compute_all_effects(fund_key, verbose, use_full_samples)",
     "(for reporting), species type, recipient type, effect start year, and persistence years."
 )
 
-h2(doc, "src/models/diminishing_returns.py")
+h2(doc, "src/models/allocate_to_periods.py")
 body(doc,
-    "Piecewise-linear diminishing-returns curves, with a 1/x hyperbolic tail beyond the last "
-    "anchor point. Essentially the same logic as in gcr-models/export_rp_csv.py but "
-    "parameterized independently. Also contains the time-period allocation logic for AW effects."
-)
-
-fn(doc, "eval_diminishing_raw(budget_m, anchors, spend_m)",
-    "Evaluates the curve at a given cumulative spend. Below first anchor: flat. Between "
-    "anchors: linear interpolation. Beyond last anchor: 1/x decay. Same formula as the GCR version."
-)
-
-fn(doc, "compute_diminishing_row(budget_m, anchors, spend_points)",
-    "Evaluates the curve at every spend point (default $10M-$900M in $10M steps) and "
-    "normalizes so the first point = 1.0."
-)
-
-fn(doc, "find_20pct_threshold(budget_m, anchors, max_spend_m)",
-    "Scans forward in $1M increments to find the cumulative spend at which marginal CE "
-    "falls to 20% of its initial value. Returns None if the threshold isn't reached "
-    "within max_spend_m. Used to characterize how quickly each intervention saturates."
+    "Standalone module that allocates an effect across the four AW time windows based on "
+    "when the effect starts and how long it persists. Previously this logic lived in "
+    "diminishing_returns.py (which has been removed); it now has its own dedicated file."
 )
 
 fn(doc, "years_in_period(persistence, start, end)",
     "Computes how many years of an effect's active lifetime (0 to persistence) overlap "
-    "with a specific time window [start, end). Simple min/max overlap calculation."
+    "with a specific time window [start, end). Simple min/max overlap calculation. "
+    "If end is None, returns all remaining years after start."
 )
 
 fn(doc, "allocate_to_periods(effect_start_year, persistence_years)",
-    "Given when an effect starts (e.g., 1 year after funding) and how long it lasts "
-    "(e.g., 5 years), computes what fraction of the total effect falls in each of the "
-    "4 AW time windows: 0-5, 5-10, 10-20, and 20-100 years. "
-    "Note: the AW model only goes to 100 years (4 periods), unlike GCR and GW which go "
-    "to 500+ years (6 periods). The t4 (100-500) and t5 (500+) columns for AW effects "
-    "will always be 0.0, which is intentional — animal welfare interventions are assumed "
-    "not to have impacts on a civilizational timescale."
+    "Given when an effect starts (e.g., year 4) and how long it lasts (e.g., 15 years), "
+    "computes what fraction of the total effect falls in each of the 4 AW time windows: "
+    "0-5, 5-10, 10-20, and 20-100 years. Period keys are '0_to_5', '5_to_10', '10_to_20', "
+    "'20_to_100'. Returns a dict mapping period_key → fraction. "
+    "Note: the AW model only uses 4 periods (to year 100), unlike GCR and GW which go "
+    "to 500+ years (6 periods). combine_data.py handles the missing t4 and t5 by treating "
+    "the absence of those columns as 0.0, which is intentional — animal welfare interventions "
+    "are assumed not to have impacts on a civilizational timescale."
+)
+body(doc,
+    "PERIOD_BOUNDS and PERIOD_KEYS are module-level constants: "
+    "PERIOD_BOUNDS = [(0,5), (5,10), (10,20), (20,100)] and "
+    "PERIOD_KEYS = ['0_to_5', '5_to_10', '10_to_20', '20_to_100']. "
+    "These drive the column names in the output CSV (e.g., neutral_0_to_5, upside_10_to_20)."
 )
 
 h2(doc, "src/pipeline/build_dataset.py")
 body(doc,
-    "The orchestrator for the AW pipeline. Calls compute_all_effects, then fits distributions "
-    "or uses empirical samples, applies risk profiles, and allocates effects across time periods."
+    "The orchestrator for the AW pipeline. Calls compute_all_effects, then applies risk "
+    "profiles directly to the empirical samples and allocates effects across time periods. "
+    "No distribution fitting is performed — the 100k empirical samples from the .npz file "
+    "are used directly."
 )
 
 fn(doc, "build_all_effects(fund_key, verbose)",
     "Main pipeline function. For each intervention effect returned by compute_all_effects: "
-    "(1) New workflow (preferred): if 100k empirical samples are available in the effect dict, "
-    "uses them directly as the draws array — no distribution fitting needed. "
-    "(2) Old/fallback workflow: fits a parametric distribution to the p10/p50/p90 percentile "
-    "data using fit_and_draw from the rp-distribution-fitting library. Has a special case for "
-    "'zero-heavy' distributions where p10=0 (binary-success interventions) — in that case, "
-    "rather than trying to fit a distribution to data with a spike at zero, it uses the CCM "
-    "mean as a point estimate replicated 100 times. If fitting fails for any reason, also "
-    "falls back to a point estimate at the median. "
-    "(3) Calls compute_risk_profiles(draws) to get the 9 risk-adjusted values. "
-    "(4) Calls allocate_to_periods to get the fraction of effect in each time window. "
-    "(5) Assembles a flat row dict with all metadata plus {rp}_{period_key} columns for "
-    "every combination of risk profile and time window. "
-    "Returns {fund_config, rows (one per intervention), ccm_metadata}."
+    "(1) Takes the empirical sample array (100k from .npz or 10k fallback from YAML) and "
+    "converts it to a numpy array of floats. "
+    "(2) Calls compute_risk_profiles(draws) to get the 9 risk-adjusted values. "
+    "(3) Calls allocate_to_periods (from allocate_to_periods.py) to get the fraction of "
+    "effect in each of the 4 time windows. "
+    "(4) Assembles a flat row dict with all metadata plus {rp}_{period_key} columns for "
+    "every combination of 9 risk profiles × 4 time windows (= 36 value columns), plus "
+    "total_{rp} columns for the undistributed total. "
+    "Returns {fund_config, rows (one per intervention), metadata}."
 )
 
 h2(doc, "src/pipeline/export.py")
 body(doc,
     "Handles all file output for the AW pipeline. Called by aw-models/run.py after "
-    "build_all_effects completes."
+    "build_all_effects completes. Produces per-fund files (e.g., ea_awf_dataset.csv, "
+    "navigation_fund_cagefree_assumptions.md) rather than a single combined file."
 )
 
-fn(doc, "export_dataset(rows, fund_config, output_path)",
-    "Writes the main aw_combined_dataset.csv in the standard RP format: metadata columns "
-    "(project_id, effect_id, recipient_type, near_term_xrisk) followed by the 9 × 4 = 36 "
-    "time-period × risk-profile value columns."
+fn(doc, "export_dataset(dataset, output_path, verbose)",
+    "Writes the per-fund dataset CSV (e.g., ea_awf_dataset.csv) in the standard RP format. "
+    "Columns: metadata fields (project_id, effect_id, species, recipient_type, fund_split_pct, "
+    "effect_start_year, persistence_years, data_source), percentile summary columns "
+    "(animal_dalys_per_M_p10 etc.), total risk-adjusted columns (total_neutral, total_upside, ...), "
+    "and the 9 risk profiles × 4 time periods = 36 period-allocated columns named {rp}_{period_key} "
+    "(e.g., neutral_0_to_5, ambiguity_20_to_100)."
 )
 
-fn(doc, "export_assumptions(rows, fund_config, output_path)",
-    "Generates a markdown-formatted assumptions register listing all parameters used for "
-    "each intervention: CCM percentiles, fund split fraction, effect start year, "
-    "persistence, fitted distribution type and error, etc."
+fn(doc, "export_assumptions(dataset, output_path, verbose)",
+    "Writes a markdown assumptions register (e.g., ea_awf_assumptions.md) listing the fund "
+    "configuration, CE source metadata, a summary table per intervention (species, split, "
+    "persistence, neutral aDALYs/$1M), key data sources, and caveats. If diminishing returns "
+    "data is present in the dataset dict, also includes a diminishing returns section."
 )
 
-fn(doc, "export_sensitivity(rows, fund_config, output_path)",
-    "Runs a one-way sensitivity analysis, varying fund_split ±50% and persistence_years "
-    "±50% for each intervention independently, and writes the results to "
-    "aw_combined_sensitivity.csv. Useful for checking which interventions drive the results."
+fn(doc, "export_diminishing(dataset, output_path, verbose)",
+    "Writes the fund-level diminishing returns curve to CSV if diminishing returns data is "
+    "present in the dataset. If the dataset has no 'diminishing' key (the current default when "
+    "DR is not computed), this function exits silently. The CSV has one row per spend point "
+    "with columns: spend_M, marginal_ce_multiplier (normalized so the first point = 1.0)."
 )
 
 doc.add_page_break()
@@ -736,18 +796,20 @@ doc.add_page_break()
 # SECTION 5 — THINGS WORTH VETTING
 # ══════════════════════════════════════════════════════════════════════════════
 
-h1(doc, "5. Things Worth Vetting")
+h1(doc, "6. Things Worth Vetting")
 body(doc,
     "Based on reading the actual code, here are specific things that may warrant a closer look:"
 )
 
 h3(doc, "1. validate_output.py uses outdated filenames")
 body(doc,
-    "The validator loads 'output_data.json' (line 186) but the file is now named "
-    "'output_data_3yr.json'. It also loads the three source DR CSVs without the year suffix "
-    "(e.g., 'givewell_diminishing_returns.csv' instead of 'givewell_diminishing_returns_3yr.csv'). "
+    "The validator loads 'output_data.json' but the file is now named "
+    "'output_data_1yr.json'. It also loads DR CSVs without the year suffix "
+    "(e.g., 'givewell_diminishing_returns.csv' instead of 'givewell_diminishing_returns_1yr.csv'), "
+    "and the AW DR files are now split per-fund (ea_awf_diminishing_returns_1yr.csv, "
+    "navigation_fund_diminishing_returns_1yr.csv) rather than combined. "
     "Running the validator as-is will fail with a FileNotFoundError. The paths need to be "
-    "updated to match the current file naming convention."
+    "updated to match the current 1yr naming convention and per-fund AW structure."
 )
 
 h3(doc, "2. validate_output.py is missing the dmreu risk profile")
@@ -760,10 +822,11 @@ body(doc,
 
 h3(doc, "3. AW model only covers 4 time periods (to year 100)")
 body(doc,
-    "The AW diminishing_returns.py PERIOD_BOUNDS stops at year 100 (lines 81-88), so t4 "
+    "The AW allocate_to_periods.py PERIOD_BOUNDS stops at year 100, so t4 "
     "(100-500 years) and t5 (500+ years) are always 0.0 for animal welfare effects. This is "
     "intentional — AW interventions aren't assumed to have century-scale impacts — but it is "
-    "worth confirming this is the intended design rather than an oversight."
+    "worth confirming this is the intended design rather than an oversight. "
+    "combine_data.py handles this gracefully by treating the absence of those columns as 0.0."
 )
 
 h3(doc, "4. GiveWell income-doublings temporal fractions sum to 99.9%")
@@ -792,6 +855,25 @@ body(doc,
     "harmful in the other. This is a deliberate modeling choice (the same intervention "
     "would backfire on both scales), but it is worth confirming this correlation structure "
     "is intended rather than accidental."
+)
+
+h3(doc, "7. AW sensitivity analysis has been removed")
+body(doc,
+    "The original AW pipeline included export_sensitivity() which ran a one-way sensitivity "
+    "analysis varying fund_split ±50% and persistence_years ±50% per intervention. This "
+    "function no longer exists in export.py. If you want to understand which interventions "
+    "drive the AW results, you would need to re-implement this or vary the fund YAML splits "
+    "manually."
+)
+
+h3(doc, "8. AW diminishing returns are defined but not exported by run.py")
+body(doc,
+    "aw_combined.yaml now contains diminishing_anchors (piecewise-linear anchors at $10M, "
+    "$26.5M, $55M, $100M, $160M defining the CE curve). The export_diminishing() function "
+    "in export.py can write these to CSV, but run.py does not call it — it only calls "
+    "export_dataset() and export_assumptions(). The per-fund diminishing returns CSVs that "
+    "combine_data.py reads (ea_awf_diminishing_returns_1yr.csv, "
+    "navigation_fund_diminishing_returns_1yr.csv) must be generated separately."
 )
 
 # ── Save ──────────────────────────────────────────────────────────────────────

@@ -129,7 +129,7 @@ Histograms are more intuitive than percentiles for non-technical audiences:
 - **Shape**: Moderate right skew
 - **Mean/Median**: 908 / 722 (1.3x ratio)
 - **Range**: 123 to 5,807
-- **Interpretation**: Blend of chicken/shrimp with 50% discount
+- **Interpretation**: Chicken corporate campaigns with 50% discount
 
 ### Movement Building
 - **Shape**: Similar to policy advocacy (scaled 0.5x)

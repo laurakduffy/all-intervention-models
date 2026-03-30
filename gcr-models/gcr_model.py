@@ -490,7 +490,7 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
     # Stratify by parameters that strongly affect time period distributions
     # (especially t4 vs t5 magnitudes)
     stratify_keys = []
-    for key in ['cubic_growth', 'T_c', 'r_inf']:
+    for key in ['cubic_growth', 'T_c', 'r_inf', 's', 'carrying_capacity_multiplier']:
         if key in sweep_params:
             stratify_keys.append(key)
     
@@ -530,11 +530,14 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
         stratum_counts = [n_samples]
     
     # Sample parameters - stratified where applicable
+    # Also record each stratum's sample range [start, end) for post-hoc harm assignment.
     param_samples = {key: [] for key in sweep_params.keys()}
-    effect_assignments = []  # 0=zero, 1=positive, 2=harm
-    
+    stratum_ranges = []  # list of (start, end) index pairs, one per stratum
+    _offset = 0
     for stratum_idx, stratum in enumerate(strata_combos):
         n_in_stratum = stratum_counts[stratum_idx]
+        stratum_ranges.append((_offset, _offset + n_in_stratum))
+        _offset += n_in_stratum
 
         # Sample from non-stratified parameters
         for key, values in sweep_params.items():
@@ -547,64 +550,14 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
                 vals, probs = _get_values_and_p(values)
                 sampled = np.random.choice(vals, size=n_in_stratum, p=probs)
                 param_samples[key].extend(sampled)
-        
-        # Stratified effect assignment within this stratum
-        # Three categories: positive (1-p_zero-p_harm), zero (p_zero), harm (p_harm)
-        p_positive = 1.0 - p_zero - p_harm
-        
-        # Probabilistic rounding for exact proportions
-        n_positive_expected = n_in_stratum * p_positive
-        n_zero_expected = n_in_stratum * p_zero
-        n_harm_expected = n_in_stratum * p_harm
-        
-        n_positive = int(n_positive_expected)
-        n_zero = int(n_zero_expected)
-        n_harm = int(n_harm_expected)
-        
-        # Handle rounding: integer parts may sum to n_in_stratum - 1.
-        # Only add one sample if there is actually a shortfall.
-        remainder_positive = n_positive_expected - n_positive
-        remainder_zero = n_zero_expected - n_zero
-        remainder_harm = n_harm_expected - n_harm
 
-        total = n_positive + n_zero + n_harm
-        if total < n_in_stratum:
-            rand_val = np.random.random()
-            if rand_val < remainder_positive:
-                n_positive += 1
-            elif rand_val < remainder_positive + remainder_zero:
-                n_zero += 1
-            else:
-                n_harm += 1
-            total += 1
-
-        # Safety net — should not trigger after the fix above
-        if total < n_in_stratum:
-            n_positive += (n_in_stratum - total)
-        elif total > n_in_stratum:
-            if n_positive > 0:
-                n_positive -= (total - n_in_stratum)
-            elif n_zero > 0:
-                n_zero -= (total - n_in_stratum)
-            else:
-                n_harm -= (total - n_in_stratum)
-        
-        # Create effect assignments: 0=zero, 1=positive, 2=harm
-        stratum_effects = np.array(
-            [0] * n_zero + [1] * n_positive + [2] * n_harm,
-            dtype=np.int8
-        )
-        np.random.shuffle(stratum_effects)
-        effect_assignments.extend(stratum_effects)
-    
     # Convert to arrays
     for key in param_samples:
         param_samples[key] = np.array(param_samples[key])
         if key in _BOOL_PARAMS:
             param_samples[key] = param_samples[key].astype(bool)
-    
-    effect_assignments = np.array(effect_assignments, dtype=np.int8)  # 0=zero, 1=positive, 2=harm
-    actual_n_samples = len(effect_assignments)
+
+    actual_n_samples = sum(stratum_counts)
     
     # Add fixed parameters
     for key, val in fixed_params.items():
@@ -644,24 +597,56 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
     model = GCRModel(params)
     results = model.run()
     
-    # Apply stratified effects: zero, positive, or harm
+    # Per-stratum magnitude-based harm/zero assignment.
+    # Within each stratum (same stratified parameter values), sort samples by
+    # |Total Value| and assign harm/zero/positive proportionally within small
+    # magnitude bins.  This guarantees that within every stratum the harm and
+    # positive groups span the same magnitude range, eliminating sign flips in
+    # the downside estimator while preserving the per-stratum parameter balance
+    # that keeps WLU stable.
     if p_zero > 0 or p_harm > 0:
+        total_evs = results["ev_by_period"]["Total Value"]
+        effect_assignments = np.ones(actual_n_samples, dtype=np.int8)  # default: positive (1)
+
+        bin_size = 100
+        for s_start, s_end in stratum_ranges:
+            stratum_indices = np.arange(s_start, s_end)
+            stratum_vals = total_evs[stratum_indices]
+            local_order = np.argsort(np.abs(stratum_vals))  # ascending magnitude within stratum
+            sorted_indices = stratum_indices[local_order]
+
+            n_in_stratum = s_end - s_start
+            for b_start in range(0, n_in_stratum, bin_size):
+                b_end = min(b_start + bin_size, n_in_stratum)
+                block_size = b_end - b_start
+                block_indices = sorted_indices[b_start:b_end]
+
+                n_harm_b = int(block_size * p_harm)
+                n_zero_b = int(block_size * p_zero)
+                remainder_harm = block_size * p_harm - n_harm_b
+                remainder_zero = block_size * p_zero - n_zero_b
+
+                rand_val = np.random.random()
+                if rand_val < remainder_harm:
+                    n_harm_b += 1
+                elif rand_val < remainder_harm + remainder_zero:
+                    n_zero_b += 1
+                n_positive_b = block_size - n_harm_b - n_zero_b
+
+                block_effects = np.array(
+                    [2] * n_harm_b + [0] * n_zero_b + [1] * n_positive_b,
+                    dtype=np.int8
+                )
+                np.random.shuffle(block_effects)
+                effect_assignments[block_indices] = block_effects
+
         zero_mask = (effect_assignments == 0)
-        positive_mask = (effect_assignments == 1)
         harm_mask = (effect_assignments == 2)
-        
+
         for k, v in results["ev_by_period"].items():
-            # Start with original values
             v_adjusted = v.copy()
-            
-            # Zero effect: set to 0
-            if p_zero > 0:
-                v_adjusted = np.where(zero_mask, 0.0, v_adjusted)
-            
-            # Harm: negate and multiply by harm_multiplier
-            if p_harm > 0:
-                v_adjusted = np.where(harm_mask, -v * harm_multiplier, v_adjusted)
-            
+            v_adjusted = np.where(zero_mask, 0.0, v_adjusted)
+            v_adjusted = np.where(harm_mask, -v * harm_multiplier, v_adjusted)
             results["ev_by_period"][k] = v_adjusted
 
     # Compute statistics

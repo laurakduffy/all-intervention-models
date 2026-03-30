@@ -1,7 +1,7 @@
-"""Effect engine: CCM intervention estimates + fund allocation splits.
+"""Effect engine: intervention estimates + fund allocation splits.
 
-Loads pre-computed cost-effectiveness distributions from the CCM extraction
-(aw_model_intervention_estimates.yaml) and fund-specific budget splits from
+Loads pre-computed cost-effectiveness distributions from
+aw_model_intervention_estimates.yaml and fund-specific budget splits from
 per-fund YAML files (data/inputs/funds/<fund_id>.yaml).
 
 For each intervention in the fund's split, produces an effect dict with
@@ -15,8 +15,8 @@ import numpy as np
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "inputs")
 
 
-def load_ccm_estimates(path=None):
-    """Load CCM intervention estimates YAML."""
+def load_intervention_estimates(path=None):
+    """Load intervention estimates YAML."""
     if path is None:
         path = os.path.join(_DATA_DIR, "aw_model_intervention_estimates.yaml")
     with open(path) as f:
@@ -25,16 +25,16 @@ def load_ccm_estimates(path=None):
 
 def load_full_samples(path=None):
     """Load full 100k samples from .npz file if available.
-    
+
     Returns dict mapping intervention_key -> numpy array of 100k samples,
     or None if file doesn't exist.
     """
     if path is None:
         path = os.path.join(_DATA_DIR, "samples", "aw_model_intervention_samples_100k.npz")
-    
+
     if not os.path.exists(path):
         return None
-    
+
     try:
         data = np.load(path)
         return {key: data[key] for key in data.files}
@@ -53,13 +53,13 @@ def load_fund(fund_id, path=None):
         return yaml.safe_load(f)
 
 
-def compute_all_effects(fund_key="aw_combined", verbose=False, use_full_samples=True):
+def compute_all_effects(fund_key="ea_awf", verbose=False, use_full_samples=True):
     """Compute effect rows for all interventions in the given fund.
 
     For each intervention:
-      - Look up CCM samples (suffering-years averted per $1000)
+      - Look up samples (suffering-years averted per $1000)
       - Convert to per-$1M (multiply by 1000)
-      - Attach fund split weight, timing, and DR anchors
+      - Attach fund split weight and timing
 
     Args:
         fund_key: Fund identifier (e.g., "aw_combined", "ea_awf")
@@ -67,12 +67,12 @@ def compute_all_effects(fund_key="aw_combined", verbose=False, use_full_samples=
         use_full_samples: If True, load full 100k samples from .npz (higher accuracy)
                          If False, use 10k downsampled samples from YAML
 
-    Returns dict with fund_config, effects list, ccm_metadata.
+    Returns dict with fund_config, effects list, metadata.
     """
-    ccm_data = load_ccm_estimates()
+    estimates_data = load_intervention_estimates()
     fund_data = load_fund(fund_key)
     fund_config = fund_data["fund"]
-    ccm_interventions = ccm_data["interventions"]
+    interventions = estimates_data["interventions"]
 
     # Try to load full 100k samples if requested
     full_samples = None
@@ -89,7 +89,6 @@ def compute_all_effects(fund_key="aw_combined", verbose=False, use_full_samples=
     if verbose:
         print(f"\nFund: {fund_config['display_name']}")
         print(f"Annual budget: ${fund_config['annual_budget_M']}M")
-        print(f"Room for more: ${fund_config['room_for_more_M']}M")
         print(f"Split sum: {total_split:.2f}")
         print()
 
@@ -98,21 +97,21 @@ def compute_all_effects(fund_key="aw_combined", verbose=False, use_full_samples=
         if not split_pct or split_pct <= 0:
             continue
 
-        if intervention_key not in ccm_interventions:
+        if intervention_key not in interventions:
             if verbose:
-                print(f"  Warning: {intervention_key} not in CCM estimates, skipping")
+                print(f"  Warning: {intervention_key} not in intervention estimates, skipping")
             continue
 
-        ccm = ccm_interventions[intervention_key]
-        
+        est = interventions[intervention_key]
+
         # Priority 1: Full 100k samples from .npz
         if full_samples and intervention_key in full_samples:
             samples_per_1000 = full_samples[intervention_key]
             data_source = "full_samples_100k"
             n_samples = len(samples_per_1000)
         # Priority 2: 10k samples from YAML
-        elif ccm.get("samples_per_1000") is not None:
-            samples_per_1000 = ccm["samples_per_1000"]
+        elif est.get("samples_per_1000") is not None:
+            samples_per_1000 = est["samples_per_1000"]
             data_source = "yaml_samples_10k"
             n_samples = len(samples_per_1000)
         # Priority 3: Percentiles only (legacy)
@@ -120,14 +119,14 @@ def compute_all_effects(fund_key="aw_combined", verbose=False, use_full_samples=
             samples_per_1000 = None
             data_source = "percentiles_only"
             n_samples = 0
-        
-        pct_per_1000 = ccm.get("percentiles_per_1000")
-        
+
+        pct_per_1000 = est.get("percentiles_per_1000")
+
         if samples_per_1000 is None and pct_per_1000 is None:
             if verbose:
-                print(f"  Warning: {intervention_key} has no CCM data, skipping")
+                print(f"  Warning: {intervention_key} has no intervention data, skipping")
             continue
-        
+
         # Convert from per-$1000 spent on the intervention to per-$1M spent on the fund,
         # applying the fund split fraction so values reflect marginal fund-level impact.
         if samples_per_1000 is not None:
@@ -148,17 +147,16 @@ def compute_all_effects(fund_key="aw_combined", verbose=False, use_full_samples=
         effect = {
             "effect_id": intervention_key,
             "intervention": intervention_key,
-            "species": ccm.get("species", "unknown"),
-            "recipient_type": ccm.get("recipient_type", "unknown"),
-            "description": ccm.get("description", ""),
-            "ccm_method": ccm.get("ccm_method", ""),
+            "species": est.get("species", "unknown"),
+            "recipient_type": est.get("recipient_type", "unknown"),
+            "description": est.get("description", ""),
             "fund_split_pct": split_pct,
             "animal_dalys_per_M_samples": animal_dalys_per_M_samples,
             "animal_dalys_per_M_pct": animal_dalys_per_M_pct,
             "data_source": data_source,
             "n_samples": n_samples,
-            "effect_start_year": ccm.get("effect_start_year", 1),
-            "persistence_years": ccm.get("persistence_years", 5),
+            "effect_start_year": est.get("effect_start_year", 1),
+            "persistence_years": est.get("persistence_years", 5),
         }
 
         if verbose:
@@ -178,6 +176,5 @@ def compute_all_effects(fund_key="aw_combined", verbose=False, use_full_samples=
     return {
         "fund_config": fund_config,
         "effects": all_effects,
-        "ccm_metadata": ccm_data.get("metadata", {}),
+        "metadata": estimates_data.get("metadata", {}),
     }
-

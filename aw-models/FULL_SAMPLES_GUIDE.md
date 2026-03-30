@@ -116,7 +116,7 @@ The `.npz` file contains:
     'shrimp_welfare': array([...100,000 values...]),
     'fish_welfare': array([...100,000 values...]),
     'invertebrate_welfare': array([...100,000 values...]),
-    'policy_advocacy_multi_species': array([...100,000 values...]),
+    'policy_advocacy': array([...100,000 values...]),
     'movement_building': array([...100,000 values...]),
     'wild_animal_welfare': array([...100,000 values...]),
 }

@@ -54,7 +54,7 @@ EU stays at 50% chicken (vs 55% historical) because it still emphasises "corpora
 | Category | Marginal $M | Split |
 |----------|-------------|-------|
 | movement_building | $17.6M | 44% |
-| policy_advocacy_multi_species | $8.9M | 22% |
+| policy_advocacy | $8.9M | 22% |
 | chicken_corporate_campaigns | $7.4M | 19% |
 | fish_welfare | $2.7M | 7% |
 | shrimp_welfare | $1.4M | 3% |
@@ -100,7 +100,7 @@ Our pipeline uses 7 intervention categories drawn from the CCM. Each TNF line it
 |----------|--------|-------------------|-----------|
 | Multinational cage-free corporate | $6,720K | chicken_corporate_campaigns | Directly described as cage-free corporate campaigns |
 | US & Canada accountability | $5,571K | chicken_corporate_campaigns | Holding food companies to welfare commitments = corporate accountability |
-| US & Canada political | $3,936K | policy_advocacy_multi_species | "Building political power" = policy advocacy |
+| US & Canada political | $3,936K | policy_advocacy | "Building political power" = policy advocacy |
 | Aquatic: shrimp | $914K | shrimp_welfare | Explicitly broken out in CSV notes |
 | Aquatic: fish (Asia) | $150K | fish_welfare | Explicitly broken out |
 | Aquatic: crabs & lobsters | $140K | invertebrate_welfare | Crustaceans mapped to invertebrate |
@@ -126,7 +126,7 @@ This line covers both corporate cage-free campaigns (securing and enforcing comm
 
 Allocation:
 - 55% → chicken_corporate_campaigns ($5,396K): corporate outreach and compliance
-- 30% → policy_advocacy_multi_species ($2,943K): EU legislative advocacy
+- 30% → policy_advocacy ($2,943K): EU legislative advocacy
 - 10% → fish_welfare ($981K): fish mentioned as significant secondary species
 - 5% → shrimp_welfare ($491K): shrimp and crustaceans mentioned
 
@@ -136,7 +136,7 @@ Description: "Corporate animal welfare and political power building." Species: L
 
 Allocation:
 - 55% → chicken_corporate_campaigns ($960K): corporate outreach
-- 35% → policy_advocacy_multi_species ($611K): political power building
+- 35% → policy_advocacy ($611K): political power building
 - 10% → fish_welfare ($175K): fish mentioned second
 
 **Asia — $4,570K**
@@ -145,7 +145,7 @@ Description: "Corporate animal welfare and political power building." Species: L
 
 Allocation:
 - 55% → chicken_corporate_campaigns ($2,514K): corporate outreach
-- 35% → policy_advocacy_multi_species ($1,600K): political work
+- 35% → policy_advocacy ($1,600K): political work
 - 10% → fish_welfare ($457K): fish mentioned second
 
 ### Rationale for the 55/30-35/10/5 split on regional lines
@@ -164,7 +164,7 @@ These ratios are the main judgement call in the analysis. If Jesse disagrees wit
 |----------|-----------|-----------|-------|
 | chicken_corporate_campaigns | $21,161K | $10,580K | 46.4% |
 | movement_building | $11,846K | $5,923K | 26.0% |
-| policy_advocacy_multi_species | $9,090K | $4,545K | 19.9% |
+| policy_advocacy | $9,090K | $4,545K | 19.9% |
 | fish_welfare | $1,763K | $882K | 3.9% |
 | shrimp_welfare | $1,405K | $703K | 3.1% |
 | invertebrate_welfare | $260K | $130K | 0.6% |

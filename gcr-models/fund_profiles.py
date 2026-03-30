@@ -77,8 +77,8 @@ _RP_WORLD_PRIORS = {
     "year_risk_1pct_max": [20, 100, 200],
     "year_max_risk": [5, 15, 50],
     # Future trajectory priors.
-    "carrying_capacity_multiplier": {'values': [1.5, 5.0, 100.0], 'p': [0.6, 0.3, 0.1]},  # unlikely high growth
-    "rate_growth": [0.005, 0.01, 0.04],
+    "carrying_capacity_multiplier": {'values': [1.5, 100.0], 'p': [0.9, 0.1]},  # unlikely high growth
+    "rate_growth": [0.01, 0.04],
     "cubic_growth": {"values": [False, True], "p": [0.90, 0.10]},
     "T_c": {'values': [500, 300, 80], 'p': [0.6, 0.3, 0.1]}, # seems unlikely in the next 80 years
     "s": [0.001, 0.01, 0.1], # we don't know how fast stellar expansion could happen
