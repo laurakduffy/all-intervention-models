@@ -1,6 +1,9 @@
 """Generate a Word document for the aw_intervention_models.py technical documentation."""
 
+import os
 from docx import Document
+
+_DOCS_DIR = os.path.dirname(os.path.abspath(__file__))
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
@@ -498,6 +501,6 @@ para(
 
 # ── Save ──────────────────────────────────────────────────────────────────────
 
-out_path = r'c:\Users\lillr\OneDrive\Rethink Priorities\Anthropic work\All-intervention-models\aw_intervention_models_documentation.docx'
+out_path = os.path.join(_DOCS_DIR, 'aw_intervention_models_documentation.docx')
 doc.save(out_path)
 print(f'Saved: {out_path}')

@@ -11,7 +11,8 @@ import os
 import sys
 import yaml
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.join(_HERE, "..")
 
 from docx import Document
 from docx.shared import Pt, RGBColor, Cm
@@ -19,13 +20,13 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
-OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AW_MODEL_DOCUMENTATION.docx")
+OUT_PATH = os.path.join(_HERE, "AW_MODEL_DOCUMENTATION.docx")
 
 # ---------------------------------------------------------------------------
 # Load estimates YAML to pull live values
 # ---------------------------------------------------------------------------
 
-_ESTIMATES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aw_model_intervention_estimates.yaml")
+_ESTIMATES_PATH = os.path.join(_ROOT, "aw-models", "data", "inputs", "aw_model_intervention_estimates.yaml")
 
 with open(_ESTIMATES_PATH) as f:
     _ESTIMATES = yaml.safe_load(f)

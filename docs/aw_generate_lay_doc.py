@@ -8,7 +8,8 @@ import os
 import sys
 import yaml
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.join(_HERE, "..")
 
 from docx import Document
 from docx.shared import Pt, RGBColor, Cm
@@ -16,9 +17,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
-OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aw_model_lay_overview.docx")
+OUT_PATH = os.path.join(_HERE, "aw_model_lay_overview.docx")
 
-_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "inputs")
+_DATA_DIR = os.path.join(_ROOT, "aw-models", "data", "inputs")
 
 # ---------------------------------------------------------------------------
 # Load parameters from YAML files

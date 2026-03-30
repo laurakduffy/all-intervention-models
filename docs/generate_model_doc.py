@@ -8,8 +8,8 @@ import math
 import os
 import sys
 
-# Ensure fund_profiles.py is importable from the same directory
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Ensure fund_profiles.py is importable from gcr-models/
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "gcr-models"))
 
 from docx import Document
 from docx.shared import Pt, RGBColor, Cm
@@ -196,7 +196,7 @@ def _rel_rr_note(fund_key):
     """Build the 'rel_rr_from_int ~ X% of total r_max' note text for a fund."""
     rd = _FUND_REL_DATA[fund_key]
     cause_frac = rd["cause_fraction"]
-    rr_ints = [r * cause_frac for r in rd["rel_rr"]]
+    rr_ints = [r * cause_frac for r in rd["rel_rr"]["values"]]
     lo = min(rr_ints)
     hi = max(rr_ints)
     return (
@@ -209,9 +209,14 @@ def _build_rel_rr_rows(fund_key):
     """Build rows for the rel_risk_reduction sweep table of a fund."""
     rd = _FUND_REL_DATA[fund_key]
     rows = []
-    for label, rel_per, rel_rr in zip(_SCENARIO_LABELS, rd["rel_per_10m"], rd["rel_rr"]):
+    for label, rel_per, rel_rr, prob in zip(
+        _SCENARIO_LABELS,
+        rd["rel_per_10m"]["values"],
+        rd["rel_rr"]["values"],
+        rd["rel_per_10m"]["p"],
+    ):
         rows.append([
-            label,
+            f"{label} ({int(prob * 100)}%)",
             f"{fmt_pct(rel_per, 3)} ({rel_per:.1e})",
             fmt_pct(rel_rr, 4),
         ])
@@ -530,14 +535,14 @@ add_note(doc,
     f"The 10x discount reflects that Q4.4 responses (0.2% per $10M) were judged optimistic. "
     f"nuclear cause_fraction = {_NUCLEAR_CAUSE_FRACTION:.5f}, so "
     f"rel_rr_from_int ranges from "
-    f"{fmt_pct(min(_NUCLEAR_REL_RISK_REDUCTION) * _NUCLEAR_CAUSE_FRACTION, 5)} to "
-    f"{fmt_pct(max(_NUCLEAR_REL_RISK_REDUCTION) * _NUCLEAR_CAUSE_FRACTION, 5)} of total r_max."
+    f"{fmt_pct(min(_NUCLEAR_REL_RISK_REDUCTION['values']) * _NUCLEAR_CAUSE_FRACTION, 5)} to "
+    f"{fmt_pct(max(_NUCLEAR_REL_RISK_REDUCTION['values']) * _NUCLEAR_CAUSE_FRACTION, 5)} of total r_max."
 )
 
 # --- Longview AI ---
 add_heading(doc, "5.3  Longview AI", 2)
 _add_fund_section(doc, "longview_ai")
-_ai_rr_ints = [r * _AI_CAUSE_FRACTION for r in _AI_REL_RISK_REDUCTION]
+_ai_rr_ints = [r * _AI_CAUSE_FRACTION for r in _AI_REL_RISK_REDUCTION["values"]]
 _r_max_10pct = _R_MAX_CENTRAL[0.10]
 add_note(doc,
     f"AI cause_fraction = {_AI_CAUSE_FRACTION:.3f}, so rel_rr_from_int = "
@@ -588,14 +593,6 @@ formulas = [
 ]
 for f in formulas:
     add_body(doc, f, monospace=True)
-
-add_heading(doc, "6.3  Diminishing returns", 2)
-add_body(doc,
-    "Each fund profile includes diminishing_anchors: a list of (budget_multiple, "
-    "marginal_CE_multiplier) pairs. A budget_multiple of 2 means 2x the baseline budget; "
-    "a multiplier of 0.5 means CE is 50% of the baseline at that scale. These are used "
-    "by downstream analysis code and are not part of the GCR simulation itself."
-)
 
 # ---------------------------------------------------------------------------
 # 7. Calibration CSV
@@ -655,7 +652,7 @@ calib_rows = []
 for cfg in _CSV_FUND_CONFIGS:
     bp_vals = [
         rel * cfg["cause_fraction"] * r_max * 1_000_000
-        for rel in cfg["rel_per_10m"]
+        for rel in cfg["rel_per_10m"]["values"]
         for r_max in _R_MAX_CENTRAL.values()
     ]
     calib_rows.append([

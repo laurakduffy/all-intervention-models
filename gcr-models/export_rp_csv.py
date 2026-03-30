@@ -36,7 +36,7 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
-from fund_profiles import get_fund_profile, YEARS_LOOK_AHEAD
+from fund_profiles import get_fund_profile
 from gcr_model import run_monte_carlo
 from risk_profiles import compute_risk_profiles
 
@@ -60,56 +60,6 @@ RISK_PROFILES = [
     "dmreu", "wlu - low", "wlu - moderate", "wlu - high", "ambiguity",
 ]
 
-
-DR_SPEND_POINTS = list(range(10, 901, 10))  # $10M .. $900M in $10M steps
-
-# ---------------------------------------------------------------------------
-# Diminishing returns curve
-# ---------------------------------------------------------------------------
-
-
-def _eval_diminishing_raw(budget_m, anchors, spend_m):
-    """Evaluate piecewise diminishing-returns curve (un-normalised).
-
-    Args:
-        budget_m: fund budget in $M.
-        anchors: list of (budget_multiple, ce_multiplier) tuples, sorted by
-            multiple.  Survey-derived at 1x/2x/5x with optional post-threshold
-            points for sharp saturation.
-        spend_m: cumulative spend in $M at which to evaluate.
-
-    Returns:
-        Raw marginal CE multiplier.
-    """
-    multiple = spend_m / budget_m
-
-    if multiple <= anchors[0][0]:
-        return anchors[0][1]
-
-    if multiple >= anchors[-1][0]:
-        last_mult, last_ce = anchors[-1]
-        return last_ce * (last_mult / multiple)
-
-    for i in range(len(anchors) - 1):
-        m0, ce0 = anchors[i]
-        m1, ce1 = anchors[i + 1]
-        if m0 <= multiple <= m1:
-            t = (multiple - m0) / (m1 - m0)
-            return ce0 + t * (ce1 - ce0)
-
-    return anchors[-1][1]
-
-
-def compute_diminishing_row(budget_m, anchors):
-    """Return normalised diminishing-returns values for each $10M step.
-
-    Normalised so the $10M column = 1.000.
-    """
-    raw = [_eval_diminishing_raw(budget_m, anchors, s) for s in DR_SPEND_POINTS]
-    base = raw[0]
-    if base <= 0:
-        return [0.0] * len(raw)
-    return [v / base for v in raw]
 
 # ---------------------------------------------------------------------------
 # Sub-extinction tiers (simple EV model)
@@ -337,8 +287,7 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True):
 # CSV writer
 # ---------------------------------------------------------------------------
 
-N_DR_COLS = len(DR_SPEND_POINTS)
-TOTAL_COLS = 1 + N_DR_COLS  # widest section determines CSV width
+TOTAL_COLS = 4 + len(RISK_PROFILES) * 6  # 4 base cols + 9 risk profiles × 6 time periods
 
 
 def _pad(row):
@@ -351,30 +300,6 @@ def _pad(row):
 def _fmt(v):
     """Format a human life years value for CSV (4 significant figures)."""
     return f"{v:.4g}"
-
-def write_diminishing_returns_csv(fund_results, output_path, verbose=True):
-    """Write separate CSV with just diminishing returns."""
-    rows = []
-    
-    # Header
-    rows.append(["project_id"] + [f"${s}M" for s in DR_SPEND_POINTS])
-    
-    # Data rows - one per fund
-    for fr in fund_results:
-        export = fr["profile"]["export"]
-        budget_m = fr["profile"]["budget"] / 1e6
-        dr_vals = compute_diminishing_row(budget_m, export["diminishing_anchors"])
-        rows.append([export["project_id"]] + [f"{v:.3f}" for v in dr_vals])
-    
-    # Write CSV
-    with open(output_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        for row in rows:
-            writer.writerow(row)
-    
-    if verbose:
-        print(f"\nDiminishing returns CSV written to: {output_path}")
-        print(f"  {len(fund_results)} funds, {len(DR_SPEND_POINTS)} spend levels")
 
 
 def write_rp_csv(fund_results, output_path, verbose=True):
@@ -617,12 +542,6 @@ def main():
     # Write main effects CSV
     write_rp_csv(fund_results, args.output, verbose=verbose)
     
-    # Write separate diminishing returns CSV
-    dr_dir = Path(args.output).parent / "diminishing_returns"
-    dr_dir.mkdir(exist_ok=True)
-    dr_output = str(dr_dir / f"gcr_diminishing_returns_{YEARS_LOOK_AHEAD}yr.csv")
-    write_diminishing_returns_csv(fund_results, dr_output, verbose=verbose)
-
     n_effect_rows = sum(
         1 + len(fr.get("sub_ext_rows", []))
         for fr in fund_results

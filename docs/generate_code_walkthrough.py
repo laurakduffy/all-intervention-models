@@ -1,8 +1,11 @@
 """Generate a Word doc walkthrough of every file and function in the project."""
 
+import os
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+_DOCS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 doc = Document()
 
@@ -136,9 +139,9 @@ fn(doc, "compute_risk_profiles(samples)",
     "(2) upside — clips everything above the 99th percentile to the 99th percentile value, then "
     "takes the mean (eliminates the very top tail). "
     "(3) downside — computes a loss-averse utility around the median: gains above the median are "
-    "counted at face value, losses below the median are multiplied by 2.5 (lambda), then the "
+    "counted at face value, losses below the median are multiplied by 5.0 (lambda), then the "
     "mean of those adjusted gains/losses is added back to the median. "
-    "(4) combined — same exponential weight decay as ambiguity, but also applies the 2.5× loss "
+    "(4) combined — same exponential weight decay as ambiguity, but also applies the 5.0× loss "
     "aversion for below-median outcomes before averaging. Returns a dict mapping each of the 9 "
     "profile names to a float."
 )
@@ -148,16 +151,16 @@ fn(doc, "compute_risk_profiles(samples)",
 h2(doc, "combine_data.py")
 body(doc,
     "The master assembly script. It reads the output CSVs from all three models, normalizes "
-    "column names and IDs to a shared standard, and produces two output files: "
-    "output_data_{N}yr.json (the full nested structure consumed by the front-end) and "
-    "all_risk_adjusted.csv (a flat version of the same data). This file runs as a script — "
+    "column names and IDs to a shared standard, and produces output_data_{scenario}.json "
+    "(the full nested structure consumed by the front-end) and all_risk_adjusted.csv "
+    "(a flat version of the same data). This file runs as a script — "
     "the top-level code executes directly rather than inside a main() function."
 )
 body(doc,
     "Key constants at the top: BUDGET_M=897 (total portfolio budget in $M), "
-    "INCREMENT_SIZE=10 ($M steps for the front-end slider), DIMINISHING_RETURNS_YRS=1 "
-    "(must match YEARS_LOOK_AHEAD in fund_profiles.py — a mismatch raises a hard error on startup). "
-    "Note: this was previously 3 (a 3-year look-ahead); it is now 1 (a 1-year look-ahead)."
+    "INCREMENT_SIZE=10 ($M steps for the front-end slider). "
+    "GCR_DMR_SCENARIO is set via the --gcr-dmr-scenario argument (default: 'median'); "
+    "it selects which GCR diminishing returns CSV to load from gcr-models/diminishing_returns/."
 )
 
 fn(doc, "parse_diminishing_returns(df)",
@@ -181,9 +184,9 @@ fn(doc, "parse_effects(df)",
     "regardless of what's in the CSV. After the function, the top-level code merges "
     "sub-extinction tier sub-projects (e.g., sentinel_bio_100m_1b) back into their parent "
     "projects and deletes the sub-fund entries. "
-    "Note: combine_data.py reads AW diminishing returns per-fund (ea_awf_diminishing_returns_1yr.csv "
-    "and navigation_fund_diminishing_returns_1yr.csv) and the LEAF fund "
-    "(leaf_diminishing_returns_1yr.csv) in addition to GW and GCR files."
+    "Note: combine_data.py reads AW diminishing returns per-fund (ea_awf_diminishing_returns.csv "
+    "and navigation_fund_diminishing_returns.csv) and the LEAF fund "
+    "(leaf_diminishing_returns.csv) in addition to GW and GCR files."
 )
 
 # ── validate_output.py ────────────────────────────────────────────────────────
@@ -220,14 +223,8 @@ fn(doc, "validate_diminishing_returns(projects)",
 )
 
 fn(doc, "main()",
-    "Loads output_data.json, calls both validators, prints a pass/fail summary."
-)
-
-note(doc,
-    "The validator still references the old filenames output_data.json (without the year suffix) "
-    "and the pre-year-suffix DR CSV paths. It will currently fail to find the files unless you "
-    "update those paths. Also, the RISK_PROFILES list in this file has 8 entries — it is missing "
-    "dmreu — so dmreu values are never validated."
+    "Loads output_data_{scenario}.json (where scenario is the --gcr-dmr-scenario argument, "
+    "default: median), calls both validators, prints a pass/fail summary."
 )
 
 # ── run_all.py ────────────────────────────────────────────────────────────────
@@ -241,7 +238,7 @@ body(doc,
     "(3) gw-models/gw_cea_modeling.py — runs the GiveWell model; "
     "(4) leaf-models/leaf_cea_model.py — runs the LEAF model; "
     "(5) gcr-models/export_rp_csv.py — runs all three GCR funds; "
-    "(6) combine_data.py — assembles everything into output_data_1yr.json and all_risk_adjusted.csv. "
+    "(6) combine_data.py — assembles everything into output_data_{scenario}.json and all_risk_adjusted.csv; accepts --gcr-dmr-scenario (default: median). "
     "Each script is run with check=True, so a failure in any step aborts the rest. "
     "This is the recommended way to refresh all data after changing any parameters."
 )
@@ -418,9 +415,7 @@ body(doc,
 )
 body(doc,
     "Key global constants: "
-    "YEARS_LOOK_AHEAD=3 (the multiplier applied to annual budgets for the 3-year DR horizon — "
-    "must match DIMINISHING_RETURNS_YRS in combine_data.py). "
-    "Cause fractions: AI ~91.9%, Nuclear ~3.5%, Bio ~0.6% of total 100-year x-risk. "
+    "Cause fractions: AI ~90%, Nuclear ~3%, Bio ~3% of total 100-year x-risk. "
     "Total x-risk scenarios: [5%, 10%, 65%] for conservative/central/optimistic. "
     "All three funds use the same relative-risk-reduction ladder per $10M: "
     "[0.002/50, 0.002/10, 0.002], giving a 50× range from conservative to optimistic."
@@ -516,7 +511,7 @@ fn(doc, "write_rp_csv(fund_results, output_path, verbose)",
 )
 
 fn(doc, "write_diminishing_returns_csv(fund_results, output_path, verbose)",
-    "Writes gcr_diminishing_returns_{N}yr.csv with one row per fund. Columns: project_id "
+    "Writes {scenario}_diminishing_returns_gcr.csv (where scenario is --gcr-dmr-scenario) with one row per fund. Columns: project_id "
     "followed by 90 DR multiplier values at $10M, $20M, ..., $900M, normalized to the $10M value."
 )
 
@@ -661,7 +656,7 @@ body(doc,
     "20-100, 100-500, 500+ years), with 100-500 and 500+ always 0."
 )
 body(doc,
-    "Output: leaf_risk_adjusted.csv (standard RP format), leaf_diminishing_returns_1yr.csv, "
+    "Output: leaf_risk_adjusted.csv (standard RP format), leaf_diminishing_returns.csv, "
     "histograms in leaf-models/histograms/, and leaf-models/summary_statistics.csv."
 )
 
@@ -801,15 +796,12 @@ body(doc,
     "Based on reading the actual code, here are specific things that may warrant a closer look:"
 )
 
-h3(doc, "1. validate_output.py uses outdated filenames")
+h3(doc, "1. validate_output.py: match --gcr-dmr-scenario to combine_data.py")
 body(doc,
-    "The validator loads 'output_data.json' but the file is now named "
-    "'output_data_1yr.json'. It also loads DR CSVs without the year suffix "
-    "(e.g., 'givewell_diminishing_returns.csv' instead of 'givewell_diminishing_returns_1yr.csv'), "
-    "and the AW DR files are now split per-fund (ea_awf_diminishing_returns_1yr.csv, "
-    "navigation_fund_diminishing_returns_1yr.csv) rather than combined. "
-    "Running the validator as-is will fail with a FileNotFoundError. The paths need to be "
-    "updated to match the current 1yr naming convention and per-fund AW structure."
+    "validate_output.py accepts --gcr-dmr-scenario (default: median) and loads the matching "
+    "output_data_{scenario}.json and GCR DR CSV. Always pass the same --gcr-dmr-scenario "
+    "value to both combine_data.py and validate_output.py, or the validator will compare "
+    "against the wrong source file."
 )
 
 h3(doc, "2. validate_output.py is missing the dmreu risk profile")
@@ -872,12 +864,12 @@ body(doc,
     "$26.5M, $55M, $100M, $160M defining the CE curve). The export_diminishing() function "
     "in export.py can write these to CSV, but run.py does not call it — it only calls "
     "export_dataset() and export_assumptions(). The per-fund diminishing returns CSVs that "
-    "combine_data.py reads (ea_awf_diminishing_returns_1yr.csv, "
-    "navigation_fund_diminishing_returns_1yr.csv) must be generated separately."
+    "combine_data.py reads (ea_awf_diminishing_returns.csv, "
+    "navigation_fund_diminishing_returns.csv) must be generated separately."
 )
 
 # ── Save ──────────────────────────────────────────────────────────────────────
 
-output_path = "code_walkthrough.docx"
+output_path = os.path.join(_DOCS_DIR, "code_walkthrough.docx")
 doc.save(output_path)
 print(f"Saved: {output_path}")

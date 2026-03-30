@@ -1,6 +1,6 @@
 # AW Fund Marginal CE: Assumptions Register
 
-Generated: 2026-03-27
+Generated: 2026-03-30
 
 ## Fund Configuration
 

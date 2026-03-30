@@ -9,7 +9,7 @@ import math
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "gcr-models"))
 
 from docx import Document
 from docx.shared import Pt, RGBColor, Cm
@@ -285,15 +285,15 @@ add_table(doc,
     [
         ["Sentinel Bio",
          fmt_dollar(FUND_PROFILES["sentinel"]["budget"]),
-         f"{fmt_pct(_SENTINEL_REL_REDUCTION_PER_10M[0], 4)} → {fmt_pct(_SENTINEL_REL_REDUCTION_PER_10M[2], 3)}",
+         f"{fmt_pct(_SENTINEL_REL_REDUCTION_PER_10M['values'][0], 4)} → {fmt_pct(_SENTINEL_REL_REDUCTION_PER_10M['values'][2], 3)}",
          f"{FUND_PROFILES['sentinel']['fixed_params']['persistence_effect']} years"],
         ["Longview Nuclear",
          fmt_dollar(FUND_PROFILES["longview_nuclear"]["budget"]),
-         f"{fmt_pct(_NUCLEAR_REL_REDUCTION_PER_10M[0], 4)} → {fmt_pct(_NUCLEAR_REL_REDUCTION_PER_10M[2], 3)}",
+         f"{fmt_pct(_NUCLEAR_REL_REDUCTION_PER_10M['values'][0], 4)} → {fmt_pct(_NUCLEAR_REL_REDUCTION_PER_10M['values'][2], 3)}",
          f"{FUND_PROFILES['longview_nuclear']['fixed_params']['persistence_effect']} years"],
         ["Longview AI",
          fmt_dollar(FUND_PROFILES["longview_ai"]["budget"]),
-         f"{fmt_pct(_AI_REL_REDUCTION_PER_10M[0], 4)} → {fmt_pct(_AI_REL_REDUCTION_PER_10M[2], 3)}",
+         f"{fmt_pct(_AI_REL_REDUCTION_PER_10M['values'][0], 4)} → {fmt_pct(_AI_REL_REDUCTION_PER_10M['values'][2], 3)}",
          f"{FUND_PROFILES['longview_ai']['fixed_params']['persistence_effect']} years"],
     ],
 )
@@ -475,37 +475,9 @@ add_body(doc,
 )
 
 # ---------------------------------------------------------------------------
-# 10. Diminishing returns
+# 10. Key limitations and caveats
 # ---------------------------------------------------------------------------
-add_heading(doc, "10.  Diminishing returns at larger budgets", 1)
-add_body(doc,
-    "If we were to give much more money to one of these funds, the marginal value per "
-    "dollar would eventually fall — there is only so much a single organisation can "
-    "absorb and deploy effectively. Each fund profile includes 'diminishing returns "
-    "anchors' based on survey responses about absorptive capacity:"
-)
-add_table(doc,
-    ["Fund", "Budget multiple", "Marginal effectiveness at that scale"],
-    [
-        ["Sentinel Bio",     "2× ($14M)",  "Same as baseline"],
-        ["Sentinel Bio",     "10× ($72M)", "~30% of baseline"],
-        ["Sentinel Bio",     "20× ($144M)","~5% of baseline"],
-        ["Longview Nuclear", "2× ($11M)",  "Same as baseline"],
-        ["Longview Nuclear", "5× ($29M)",  "~80% of baseline"],
-        ["Longview Nuclear", "8× ($46M)",  "~25% of baseline"],
-        ["Longview AI",      "~0.7× ($50M)","Same as baseline"],
-        ["Longview AI",      "~2.7× ($190M)","~50% of baseline"],
-    ],
-)
-add_body(doc,
-    "These anchors are used by downstream analysis (e.g. computing cost-effectiveness at "
-    "the margin) and are not part of the core risk simulation."
-)
-
-# ---------------------------------------------------------------------------
-# 11. Key limitations and caveats
-# ---------------------------------------------------------------------------
-add_heading(doc, "11.  Key limitations and honest caveats", 1)
+add_heading(doc, "10.  Key limitations and honest caveats", 1)
 add_body(doc,
     "This model involves some very large numbers and deep uncertainty. The following "
     "caveats are important to keep in mind:"
@@ -536,9 +508,9 @@ add_bullet(doc,
     bold_prefix="Model boundary. ")
 
 # ---------------------------------------------------------------------------
-# 12. Summary table
+# 11. Summary table
 # ---------------------------------------------------------------------------
-add_heading(doc, "12.  At a glance: key model parameters", 1)
+add_heading(doc, "11.  At a glance: key model parameters", 1)
 
 _ai_fp  = FUND_PROFILES["longview_ai"]["fixed_params"]
 _nuc_fp = FUND_PROFILES["longview_nuclear"]["fixed_params"]
@@ -556,9 +528,9 @@ add_table(doc,
          fmt_pct(_NUCLEAR_CAUSE_FRACTION, 1),
          fmt_pct(_AI_CAUSE_FRACTION, 1)],
         ["Rel. risk reduction / $10M (central)",
-         fmt_pct(_SENTINEL_REL_REDUCTION_PER_10M[1], 4),
-         fmt_pct(_NUCLEAR_REL_REDUCTION_PER_10M[1], 4),
-         fmt_pct(_AI_REL_REDUCTION_PER_10M[1], 4)],
+         fmt_pct(_SENTINEL_REL_REDUCTION_PER_10M["values"][1], 4),
+         fmt_pct(_NUCLEAR_REL_REDUCTION_PER_10M["values"][1], 4),
+         fmt_pct(_AI_REL_REDUCTION_PER_10M["values"][1], 4)],
         ["Effect starts (years from now)",
          str(_sen_fp["year_effect_starts"]),
          str(_nuc_fp["year_effect_starts"]),

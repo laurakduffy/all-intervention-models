@@ -7,11 +7,7 @@ __pycache__/
 *.npz
 
 # Generated outputs (regenerable by running the models)
-gw-models/gw_risk_adjusted.csv
-gw-models/summary_statistics.csv
-gw-models/histograms/
-aw-models/data/outputs/histograms/
-aw-models/data/outputs/aw_model_extended_statistics.csv
+# NONE
 
 # IDE / OS
 .vscode/

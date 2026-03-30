@@ -3,11 +3,19 @@ Validates that output_data.json is consistent with:
   1. all_risk_adjusted.csv  (risk scores for all effects)
   2. The three source diminishing returns CSV files
 """
+import argparse
 import json
 import math
 import pandas as pd
 
-from combine_data import DIMINISHING_RETURNS_YRS
+_parser = argparse.ArgumentParser(description='Validate combined output data.')
+_parser.add_argument(
+    '--gcr-dmr-scenario', default='median',
+    choices=['optimistic', 'pessimistic', 'median', 'fund_estimated'],
+    help='GCR diminishing returns scenario to validate against (default: median)'
+)
+_args = _parser.parse_args()
+GCR_DMR_SCENARIO = _args.gcr_dmr_scenario
 
 TOLERANCE = 1e-6  # relative tolerance for float comparisons
 
@@ -48,7 +56,9 @@ def parse_pct(val):
     return float(val)
 
 
-def validate_risk_scores(projects, csv_path='all_risk_adjusted.csv'):
+def validate_risk_scores(projects, csv_path=None):
+    if csv_path is None:
+        csv_path = f'outputs/all_risk_adjusted_{GCR_DMR_SCENARIO}.csv'
     print(f"\n=== Checking risk scores: JSON vs {csv_path} ===")
     df = pd.read_csv(csv_path)
     errors = []
@@ -106,15 +116,17 @@ def validate_risk_scores(projects, csv_path='all_risk_adjusted.csv'):
     return len(errors) == 0
 
 
-def validate_diminishing_returns(projects):
+def validate_diminishing_returns(projects, gcr_dmr_scenario='median'):
     print("\n=== Checking diminishing returns: JSON vs source CSVs ===")
     errors = []
 
     # Load source files the same way combine_data.py does
     source_dfs = [
-        pd.read_csv('gw-models/givewell_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS)),
-        pd.read_csv('aw-models/outputs/aw_combined_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS)),
-        pd.read_csv('gcr-models/diminishing_returns/gcr_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS)),
+        pd.read_csv('gw-models/givewell_diminishing_returns.csv'),
+        pd.read_csv('aw-models/data/inputs/ea_awf_diminishing_returns.csv'),
+        pd.read_csv('aw-models/data/inputs/navigation_fund_diminishing_returns.csv'),
+        pd.read_csv('gcr-models/diminishing_returns/{}_diminishing_returns_gcr.csv'.format(gcr_dmr_scenario)),
+        pd.read_csv('leaf-models/leaf_diminishing_returns.csv'),
     ]
     combined = pd.concat(source_dfs, ignore_index=True)
 
@@ -184,14 +196,15 @@ def validate_diminishing_returns(projects):
 
 
 def main():
-    print("Loading output_data.json...")
-    with open('output_data.json') as f:
+    json_path = f'outputs/output_data_{GCR_DMR_SCENARIO}.json'
+    print(f"Loading {json_path}...")
+    with open(json_path) as f:
         data = json.load(f)
     projects = data['projects']
     print(f"  Found {len(projects)} projects: {list(projects.keys())}")
 
     ok1 = validate_risk_scores(projects)
-    ok2 = validate_diminishing_returns(projects)
+    ok2 = validate_diminishing_returns(projects, gcr_dmr_scenario=GCR_DMR_SCENARIO)
 
     print("\n=== Summary ===")
     if ok1 and ok2:

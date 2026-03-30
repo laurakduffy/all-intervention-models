@@ -1,4 +1,5 @@
 ## Combine all the data on risk scores and diminishing returns from the fund into a single JSON file
+import argparse
 import json
 import sys
 import os
@@ -9,22 +10,24 @@ from datetime import datetime
 BUDGET_M = 897 # in Millions
 INCREMENT_SIZE = 10 # in Millions
 
-_gcr_models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gcr-models")
-sys.path.insert(0, _gcr_models_dir)
-from fund_profiles import YEARS_LOOK_AHEAD 
-sys.path.pop(0)
+_GCR_DMR_SCENARIOS = ['optimistic', 'pessimistic', 'median', 'fund_estimated']
 
-DIMINISHING_RETURNS_YRS = 1
-
-if DIMINISHING_RETURNS_YRS != YEARS_LOOK_AHEAD:
-    raise ValueError(f"Mismatch between DIMINISHING_RETURNS_YRS ({DIMINISHING_RETURNS_YRS}) and YEARS_LOOK_AHEAD ({YEARS_LOOK_AHEAD}). Please ensure these are aligned.")
+if __name__ == '__main__':
+    _parser = argparse.ArgumentParser(description='Combine all intervention model data.')
+    _parser.add_argument(
+        '--gcr-dmr-scenario', default='median', choices=_GCR_DMR_SCENARIOS,
+        help='GCR diminishing returns scenario (default: median)'
+    )
+    GCR_DMR_SCENARIO = _parser.parse_args().gcr_dmr_scenario
+else:
+    GCR_DMR_SCENARIO = 'median'
 
 # combine the diminishing returns data from the three models into a single dataframe
-gw_diminishing_returns = pd.read_csv('gw-models/givewell_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
-ea_awf_diminishing_returns = pd.read_csv('aw-models/data/inputs/ea_awf_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
-navigation_fund_diminishing_returns = pd.read_csv('aw-models/data/inputs/navigation_fund_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
-gcr_diminishing_returns = pd.read_csv('gcr-models/diminishing_returns/gcr_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
-leaf_diminishing_returns = pd.read_csv('leaf-models/leaf_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS))
+gw_diminishing_returns = pd.read_csv('gw-models/givewell_diminishing_returns.csv')
+ea_awf_diminishing_returns = pd.read_csv('aw-models/data/inputs/ea_awf_diminishing_returns.csv')
+navigation_fund_diminishing_returns = pd.read_csv('aw-models/data/inputs/navigation_fund_diminishing_returns.csv')
+gcr_diminishing_returns = pd.read_csv('gcr-models/diminishing_returns/{}_diminishing_returns_gcr.csv'.format(GCR_DMR_SCENARIO))
+leaf_diminishing_returns = pd.read_csv('leaf-models/leaf_diminishing_returns.csv')
 
 FUND_NAME_MAP = {
     'sentinel': 'sentinel_bio',
@@ -92,8 +95,6 @@ TIME_MAPPINGS = [
     ('t4', '100_to_500'), # Default to 0.0 if not found
     ('t5', '500_plus')    # Default to 0.0 if not found
 ]
-
-
 
 diminishing_returns_df = pd.concat([gw_diminishing_returns, \
                                     ea_awf_diminishing_returns, \
@@ -253,11 +254,13 @@ final_json_structure = {
   "projects": projects_data
 }
 
+os.makedirs('outputs', exist_ok=True)
+
 # Export the generated dictionary to JSON
-with open('output_data_{}yr.json'.format(DIMINISHING_RETURNS_YRS), 'w') as f:
+with open('outputs/output_data_{}.json'.format(GCR_DMR_SCENARIO), 'w') as f:
     json.dump(final_json_structure, f, indent=2)
 
-print("Data successfully mapped and exported to output_data_{}yr.json".format(DIMINISHING_RETURNS_YRS))
+print("Data successfully mapped and exported to outputs/output_data_{}.json".format(GCR_DMR_SCENARIO))
 
 # Export normalized risk-adjusted data to CSV
 time_labels = ['t0', 't1', 't2', 't3', 't4', 't5']
@@ -276,9 +279,9 @@ for pid, proj in projects_data.items():
         rows.append(row)
 
 normalized_df = pd.DataFrame(rows)
-normalized_df.to_csv('all_risk_adjusted.csv', index=False)
-print("Risk-adjusted data exported to all_risk_adjusted.csv")
+normalized_df.to_csv('outputs/all_risk_adjusted_{}.csv'.format(GCR_DMR_SCENARIO), index=False)
+print("Risk-adjusted data exported to outputs/all_risk_adjusted_{}.csv".format(GCR_DMR_SCENARIO))
 
-diminishing_returns_df.to_csv('all_diminishing_returns_{}yr.csv'.format(DIMINISHING_RETURNS_YRS), index=False)
-print("Diminishing returns data exported to all_diminishing_returns_{}yr.csv".format(DIMINISHING_RETURNS_YRS))
+diminishing_returns_df.to_csv('outputs/all_diminishing_returns_{}.csv'.format(GCR_DMR_SCENARIO), index=False)
+print("Diminishing returns data exported to outputs/all_diminishing_returns_{}.csv".format(GCR_DMR_SCENARIO))
 

@@ -146,7 +146,6 @@ python run_analysis.py -n 10000
 - Total value (all time periods combined)
 - Period-by-period (0-5yr, 5-10yr, etc.)
 - Sub-extinction tiers (catastrophic but not extinction)
-- Diminishing returns adjustment
 
 ## That's It!
 

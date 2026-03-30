@@ -1,5 +1,8 @@
+import os
 from docx import Document
 from docx.shared import Pt
+
+_DOCS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 doc = Document()
 
@@ -312,6 +315,6 @@ doc.add_paragraph(
     'downside, or ambiguous outcomes.'
 )
 
-out_path = r'c:\Users\lillr\OneDrive\Rethink Priorities\Anthropic work\All-intervention-models\gw-models\GW_CEA_Methodology_Notes.docx'
+out_path = os.path.join(_DOCS_DIR, 'GW_CEA_Methodology_Notes.docx')
 doc.save(out_path)
 print(f'Saved to {out_path}')

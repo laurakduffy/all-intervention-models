@@ -11,7 +11,7 @@ All-intervention-models/
 ├── aw-models/          # Animal welfare funds (EA AWF, Navigation Fund cage-free & general)
 ├── leaf-models/        # LEAF longevity research fund
 ├── run_all.py          # Runs all models in sequence and combines outputs
-└── combine_data.py     # Merges all model outputs into output_data_1yr.json
+└── combine_data.py     # Merges all model outputs into output_data_{scenario}.json
 ```
 
 ## Models
@@ -46,7 +46,7 @@ Estimates the expected value of reducing existential and catastrophic risk, base
 - Sentinel Bio additionally models two sub-extinction tiers (recoverable catastrophes) via a simple EV formula
 
 **Entry point:** `gcr-models/export_rp_csv.py`
-**Output:** `gcr-models/gcr_output.csv`, `gcr-models/diminishing_returns/gcr_diminishing_returns_1yr.csv`
+**Output:** `gcr-models/gcr_output.csv`, `gcr-models/diminishing_returns/{scenario}_diminishing_returns_gcr.csv`
 
 ---
 
@@ -78,7 +78,7 @@ Estimates the cost-effectiveness of LEAF's longevity research funding in terms o
 - Uses the same 6-period time structure and 9 risk profiles as GiveWell and GCR
 
 **Entry point:** `leaf-models/leaf_cea_model.py`
-**Output:** `leaf-models/leaf_risk_adjusted.csv`, `leaf-models/leaf_diminishing_returns_1yr.csv`
+**Output:** `leaf-models/leaf_risk_adjusted.csv`, `leaf-models/leaf_diminishing_returns.csv`
 
 ---
 
@@ -119,13 +119,15 @@ Piecewise linear interpolation between analyst-specified anchor points, with 1/x
 
 ## Combining Outputs
 
-`combine_data.py` reads the CSVs from all models and merges them into `output_data_1yr.json` for use by downstream tools. It maps each model's column naming conventions to a unified structure and assembles the 6×9 values matrices and diminishing returns arrays per fund.
+`combine_data.py` reads the CSVs from all models and merges them into `output_data_{scenario}.json` for use by downstream tools. It maps each model's column naming conventions to a unified structure and assembles the 6×9 values matrices and diminishing returns arrays per fund.
 
 ```bash
-python combine_data.py
+python combine_data.py [--gcr-dmr-scenario {optimistic,pessimistic,median,fund_estimated}]
 ```
 
-**Output:** `output_data_1yr.json`, `all_risk_adjusted.csv`
+The `--gcr-dmr-scenario` flag selects which GCR diminishing returns curve to use (default: `median`). The four options correspond to the files in `gcr-models/diminishing_returns/`.
+
+**Output:** `output_data_{scenario}.json`, `all_diminishing_returns_{scenario}.csv`, `all_risk_adjusted.csv`
 
 ---
 
@@ -134,10 +136,10 @@ python combine_data.py
 ### Run everything at once (recommended)
 
 ```bash
-python run_all.py
+python run_all.py [--gcr-dmr-scenario {optimistic,pessimistic,median,fund_estimated}]
 ```
 
-This runs all pipelines in sequence and finishes by combining outputs. Any failure aborts the rest.
+This runs all pipelines in sequence and finishes by combining outputs. Any failure aborts the rest. The `--gcr-dmr-scenario` flag is passed through to `combine_data.py` (default: `median`).
 
 ### Run models individually
 
@@ -157,8 +159,8 @@ python leaf-models/leaf_cea_model.py
 # Step 5 — GCR
 cd gcr-models && python export_rp_csv.py --n-samples 100000
 
-# Step 6 — Combine
-python combine_data.py
+# Step 6 — Combine (--gcr-dmr-scenario defaults to median)
+python combine_data.py --gcr-dmr-scenario median
 ```
 
 ## Dependencies

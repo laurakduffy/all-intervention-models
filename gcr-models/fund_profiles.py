@@ -36,8 +36,6 @@ def _r_max_from_cumulative_risk(
     )
     return float(result[0]) if scalar else result
 
-YEARS_LOOK_AHEAD = 1 # number of years to consider for DMR calculations. 1 and 3 presently allowed
-
 # ---------------------------------------------------------------------------
 # Cause-specific risk fractions (share of total x-risk per cause).
 # Partially derived from RP house-view: (AI direct + AI indirect) / total, etc.
@@ -50,12 +48,9 @@ _AI_CAUSE_FRACTION      = 0.9
 _NUCLEAR_CAUSE_FRACTION = 0.03           
 _BIO_CAUSE_FRACTION     = 0.03 
 
-# Q4.4 declined. 
-# Assume same as nuclear risk reduction per $10M, with uncertainty envelope.
-_SENTINEL_REL_REDUCTION_PER_10M = [0.002/50, 0.002/10, 0.002] 
-_SENTINEL_REL_RISK_REDUCTION = [
-    rel * (7.2 * M * YEARS_LOOK_AHEAD/ (10 * M)) for rel in _SENTINEL_REL_REDUCTION_PER_10M
-]
+_SENTINEL_BUDGET = 7.2 * M 
+_NUCLEAR_BUDGET  = 5.7 * M 
+_AI_BUDGET       = 70  * M 
 
 # Total x-risk (all causes) cumulative probability over 100 years.
 # The Gaussian "Time of Perils" peak is calibrated to total x-risk so that
@@ -84,25 +79,38 @@ _RP_WORLD_PRIORS = {
     "s": [0.001, 0.01, 0.1], # we don't know how fast stellar expansion could happen
 }
 
-# Longview Nuclear 4.4 (extinction): 0.2% rel cause risk reduction per $10M
-# Might be too optimistic, downweight central by 10x, pessimistic by 50x
+# Longview Nuclear 4.4 (extinction): 0.2% rel cause risk reduction per $10M on the margin if successful
+# We assume this is relatively correct as a central estimate. Assume 10x higher and 10x lower as lower and upper bounds
 # Thus, we get 0.02% rel nuclear risk reduction per $10M as the central estimate
-_NUCLEAR_REL_REDUCTION_PER_10M = [0.002/50, 0.002/10, 0.002] 
-_NUCLEAR_REL_RISK_REDUCTION = [
-    rel * (5.7 * M * YEARS_LOOK_AHEAD / (10 * M)) for rel in _NUCLEAR_REL_REDUCTION_PER_10M
-]
+# Probabilities: 25% low, 60% central, 15% high
+# These will average out to ~1x when considering harm and zero effect
+_NUCLEAR_REL_REDUCTION_PER_10M = {"values": [0.002/10, 0.002, 0.002*10], "p": [0.25, 0.60, 0.15]}
+_NUCLEAR_REL_RISK_REDUCTION = {
+    "values": [rel * (_NUCLEAR_BUDGET / (10 * M)) for rel in _NUCLEAR_REL_REDUCTION_PER_10M["values"]],
+    "p": _NUCLEAR_REL_REDUCTION_PER_10M["p"],
+}
+
+# Q4.4 declined.
+# Assume same as nuclear risk reduction per $10M, with uncertainty envelope.
+# This is because the budget of sentinel bio is about the same as that of Longview nuclear
+_SENTINEL_REL_REDUCTION_PER_10M = _NUCLEAR_REL_REDUCTION_PER_10M
+_SENTINEL_REL_RISK_REDUCTION = {
+    "values": [rel * (_SENTINEL_BUDGET / (10 * M)) for rel in _SENTINEL_REL_REDUCTION_PER_10M["values"]],
+    "p": _SENTINEL_REL_REDUCTION_PER_10M["p"],
+}
 
 # Longview AI declined 4.3 and 4.4: use RP world priors + explicit assumption.
-# Cost-effectiveness assumed as cost-effective as nuclear risk reduction (rel reduction per $10M).
+# Cost-effectiveness assumed 1/10th as cost-effective as nuclear risk reduction (rel reduction per $10M)
+# because it is ~10x more funded
 
-_AI_REL_REDUCTION_PER_10M = [0.002/50, 0.002/10, 0.002] 
-_AI_REL_RISK_REDUCTION = [
-    rel * (70 * M * YEARS_LOOK_AHEAD / (10 * M)) for rel in _AI_REL_REDUCTION_PER_10M
-]
-
-_SENTINEL_BUDGET = 7.2 * M * YEARS_LOOK_AHEAD
-_NUCLEAR_BUDGET  = 5.7 * M * YEARS_LOOK_AHEAD
-_AI_BUDGET       = 70  * M * YEARS_LOOK_AHEAD
+_AI_REL_REDUCTION_PER_10M = {
+    "values": [v / 10 for v in _NUCLEAR_REL_REDUCTION_PER_10M["values"]],
+    "p": _NUCLEAR_REL_REDUCTION_PER_10M["p"],
+}
+_AI_REL_RISK_REDUCTION = {
+    "values": [rel * (_AI_BUDGET / (10 * M)) for rel in _AI_REL_REDUCTION_PER_10M["values"]],
+    "p": _AI_REL_REDUCTION_PER_10M["p"],
+}
 
 FUND_PROFILES = {
     "sentinel": {
@@ -131,14 +139,6 @@ FUND_PROFILES = {
             "near_term_xrisk": False,
             "effect_id": "effect_human_lives_extinction",
             "recipient_type": "human_life_years",
-            # (budget_multiple, marginal_ce_multiplier) from survey Q3.2/Q3.3.
-            # Q3.2 (2x): "stay roughly the same"; Q3.3 (5x): "would improve"
-            # (weakest-link threshold dynamics at ~70% DNA screening prevalence).
-            # Beyond 5x (~$36M): saturates core bio-prevention areas; stated
-            # max deployable at current CE is $15-20M (Q3.1).
-            "diminishing_anchors": [
-                (1, 1.0), (2, 1.0), (5, 1), (10, 0.3), (20, 0.05),
-            ],
         },
         # Sub-extinction tiers (simple EV: P(event) × deaths × rel_rr × persistence).
         # From survey Q4.3 risk estimates + derived rel_rr (Q4.4 declined).
@@ -213,15 +213,6 @@ FUND_PROFILES = {
             "near_term_xrisk": False,
             "effect_id": "effect_human_lives_extinction",
             "recipient_type": "human_life_years",
-            # Q3.2 (2x ~$11M): "cost-effectiveness would improve" — increasing
-            # returns up to ~$25M due to underfunded field restoring capacity.
-            # Q3.3 (5x ~$29M): "begin to see diminishing marginal effectiveness"
-            # but field still small enough to compare favorably.
-            # Beyond 5x: total nuclear philanthropy field is ~$45M/yr; at ~$25M
-            # Longview would be half the field. Sharp saturation beyond 8x.
-            "diminishing_anchors": [
-                (1, 1.0), (2, 1), (5, 0.8), (8, 0.25), (20, 0.05),
-            ],
         },
         "sub_extinction_tiers": [
             {
@@ -290,11 +281,6 @@ FUND_PROFILES = {
             "near_term_xrisk": True,
             "effect_id": "effect_human_lives_extinction",
             "recipient_type": "human_life_years",
-            # Q3.2 (2x ~$140M): "stay approximately the same" for one year
-            # Q3.3 (5x ~$350M): "decline by ~75%".
-            # Modified to assume that returns start to diminish around 50M, 50% by $190M for one year. 
-            # Highly uncertain
-            "diminishing_anchors": [(50/70, 1.0), (190/70, 0.50), (260/70, 0.25)],
         },
         "sub_extinction_tiers": [
             {
@@ -396,19 +382,19 @@ if __name__ == "__main__":
 
     _show_fund(
         "Sentinel Bio", "$7.2M/yr",
-        _SENTINEL_REL_REDUCTION_PER_10M, _SENTINEL_REL_RISK_REDUCTION,
+        _SENTINEL_REL_REDUCTION_PER_10M["values"], _SENTINEL_REL_RISK_REDUCTION["values"],
         _BIO_CAUSE_FRACTION,
         ["conservative", "central", "optimistic"],
     )
     _show_fund(
         "Longview Nuclear", "$5.7M/yr",
-        _NUCLEAR_REL_REDUCTION_PER_10M, _NUCLEAR_REL_RISK_REDUCTION,
+        _NUCLEAR_REL_REDUCTION_PER_10M["values"], _NUCLEAR_REL_RISK_REDUCTION["values"],
         _NUCLEAR_CAUSE_FRACTION,
         ["conservative", "central", "optimistic"],
     )
     _show_fund(
         "Longview AI", "$70M/yr",
-        _AI_REL_REDUCTION_PER_10M, _AI_REL_RISK_REDUCTION,
+        _AI_REL_REDUCTION_PER_10M["values"], _AI_REL_RISK_REDUCTION["values"],
         _AI_CAUSE_FRACTION,
         ["central"],
     )
@@ -424,9 +410,9 @@ if __name__ == "__main__":
     _HERE = os.path.dirname(os.path.abspath(__file__))
 
     _CSV_FUND_CONFIGS = [
-        {"fund": "sentinel_bio",    "rel_scenarios": ["conservative", "central", "optimistic"], "rel_per_10m": _SENTINEL_REL_REDUCTION_PER_10M, "cause_fraction": _BIO_CAUSE_FRACTION},
-        {"fund": "longview_nuclear","rel_scenarios": ["conservative", "central", "optimistic"], "rel_per_10m": _NUCLEAR_REL_REDUCTION_PER_10M,  "cause_fraction": _NUCLEAR_CAUSE_FRACTION},
-        {"fund": "longview_ai",     "rel_scenarios": ["conservative", "central", "optimistic"], "rel_per_10m": _AI_REL_REDUCTION_PER_10M,       "cause_fraction": _AI_CAUSE_FRACTION},
+        {"fund": "sentinel_bio",    "rel_scenarios": ["conservative", "central", "optimistic"], "rel_per_10m": _SENTINEL_REL_REDUCTION_PER_10M["values"], "cause_fraction": _BIO_CAUSE_FRACTION},
+        {"fund": "longview_nuclear","rel_scenarios": ["conservative", "central", "optimistic"], "rel_per_10m": _NUCLEAR_REL_REDUCTION_PER_10M["values"],  "cause_fraction": _NUCLEAR_CAUSE_FRACTION},
+        {"fund": "longview_ai",     "rel_scenarios": ["conservative", "central", "optimistic"], "rel_per_10m": _AI_REL_REDUCTION_PER_10M["values"],       "cause_fraction": _AI_CAUSE_FRACTION},
     ]
     _CUM_LABELS = [f"{'low' if i == 0 else 'central' if i == 1 else 'high'}_{int(c*100)}pct"
                    for i, c in enumerate(_TOTAL_XRISK_100YR)]

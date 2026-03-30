@@ -410,7 +410,7 @@ def test_conservative_bio_survival_diff_nonzero():
         year_max_risk=np.full(n, 15.0),
         year_risk_1pct_max=np.full(n, 100.0),
         r_inf=np.full(n, 1e-10),                            # smallest r_inf
-        rel_risk_reduction=np.full(n, _SENTINEL_REL_RISK_REDUCTION[0]),  # conservative
+        rel_risk_reduction=np.full(n, _SENTINEL_REL_RISK_REDUCTION["values"][0]),  # conservative
         cause_fraction=_BIO_CAUSE_FRACTION,
         year_effect_starts=np.full(n, 0.0),
         persistence_effect=np.full(n, 15.0),

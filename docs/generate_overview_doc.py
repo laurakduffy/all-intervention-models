@@ -376,7 +376,7 @@ add_table(doc,
         ["upside",        "Informal",            "Clips samples at the 99th percentile before taking the mean. "
                                                   "Reflects skepticism that very large outcomes are real."],
         ["downside",      "Informal",            "Loss-averse utility around the median. Losses below the "
-                                                  "median are amplified by a factor of 2.5 relative to equal-sized gains."],
+                                                  "median are amplified by a factor of 5.0 relative to equal-sized gains."],
         ["combined",      "Percentile-weighted", "Applies exponential decay to weights for samples above the "
                                                   "97.5th percentile, zeroing out samples above the 99.9th percentile, "
                                                   "then adds loss aversion around the median."],
@@ -408,11 +408,11 @@ add_body(doc,
 add_heading(doc, "Downside (loss aversion)", 3)
 add_body(doc, "    ref  =  median(samples)", monospace=True)
 add_body(doc, "    gain_i  =  sample_i - ref", monospace=True)
-add_body(doc, "    adjusted_gain_i  =  gain_i  if gain_i >= 0  else  2.5 * gain_i", monospace=True)
+add_body(doc, "    adjusted_gain_i  =  gain_i  if gain_i >= 0  else  5.0 * gain_i", monospace=True)
 add_body(doc, "    E_downside  =  ref + mean(adjusted_gains)", monospace=True)
 add_body(doc,
-    "A loss below the reference point (the median) counts 2.5 times as much as an equal "
-    "gain above it, following the standard prospect-theory loss aversion coefficient."
+    "A loss below the reference point (the median) counts 5.0 times as much as an equal "
+    "gain above it (LOSS_AVERSION_LAMBDA = 5.0)."
 )
 
 add_heading(doc, "Combined and Ambiguity (percentile weighting)", 3)
