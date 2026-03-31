@@ -279,7 +279,7 @@ for pid, proj in projects_data.items():
         rows.append(row)
 
 normalized_df = pd.DataFrame(rows)
-normalized_df.to_csv('outputs/all_risk_adjusted_{}.csv'.format(GCR_DMR_SCENARIO), index=False)
+normalized_df.to_csv('outputs/all_risk_adjusted.csv', index=False)
 print("Risk-adjusted data exported to outputs/all_risk_adjusted_{}.csv".format(GCR_DMR_SCENARIO))
 
 diminishing_returns_df.to_csv('outputs/all_diminishing_returns_{}.csv'.format(GCR_DMR_SCENARIO), index=False)
