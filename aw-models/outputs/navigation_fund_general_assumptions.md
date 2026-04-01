@@ -1,6 +1,6 @@
 # AW Fund Marginal CE: Assumptions Register
 
-Generated: 2026-03-30
+Generated: 2026-03-31
 
 ## Fund Configuration
 
@@ -18,13 +18,13 @@ Generated: 2026-03-30
 
 | Intervention | Species | Recipient | Split | Persistence | Neutral aDALYs/$1M |
 |---|---|---|---|---|---|
-| movement_building | multiple | multiple | 33% | 10yr | 99,427 |
-| policy_advocacy | multiple | multiple | 10% | 15yr | 60,259 |
-| chicken_corporate_campaigns | chicken | birds | 7% | 15yr | 84,362 |
-| fish_welfare | carp | fish | 12% | 10yr | 22,658 |
-| shrimp_welfare | shrimp | shrimp | 12% | 10yr | 333,687 |
-| invertebrate_welfare | bsf | non_shrimp_invertebrates | 2% | 10yr | 55,354 |
-| wild_animal_welfare | wild | multiple | 2% | 10yr | 12,275 |
+| movement_building | multiple | multiple | 41% | 10yr | 124,283 |
+| policy_advocacy | multiple | multiple | 12% | 15yr | 75,323 |
+| chicken_corporate_campaigns | chicken | birds | 9% | 15yr | 105,452 |
+| fish_welfare | carp | fish | 16% | 10yr | 28,322 |
+| shrimp_welfare | shrimp | shrimp | 16% | 10yr | 417,109 |
+| invertebrate_welfare | bsf | non_shrimp_invertebrates | 3% | 10yr | 69,193 |
+| wild_animal_welfare | wild | multiple | 3% | 10yr | 15,344 |
 
 ## Key Sources
 

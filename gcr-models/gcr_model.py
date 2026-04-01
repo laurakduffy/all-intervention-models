@@ -354,6 +354,7 @@ class GCRModel:
 
         # Short-term intervention value by period
         ev_short = {}
+        abs_ev_short = {}
         for i in range(len(p.periods_value) - 1):
             lo = p.periods_value[i]
             hi = p.periods_value[i + 1]
@@ -361,6 +362,9 @@ class GCRModel:
                 value_array[lo:hi] * diff_in_survival[lo:hi], axis=0
             )
             ev_short[f"{lo} to {hi}"] = ev_i
+            abs_ev_short[f"{lo} to {hi}"] = np.sum(
+                value_array[lo:hi] * survival_arr_1[lo:hi], axis=0
+            )
 
         last = p.periods_value[-1]
         after_key = f"after {last}"
@@ -372,6 +376,10 @@ class GCRModel:
                 * diff_in_survival[last:max_num_years]
             )
             ev_short[after_key] = np.sum(contributions * mask, axis=0)
+            abs_ev_short[after_key] = np.sum(
+                value_array[last:max_num_years] * survival_arr_1[last:max_num_years] * mask,
+                axis=0,
+            )
 
         # Long-term value
         sim_idx = np.arange(n)
@@ -399,6 +407,24 @@ class GCRModel:
             p.T_c > num_years_per_sim, ev_cubic_late, ev_cubic_early
         )
         ev_long = np.where(p.cubic_growth, ev_cubic, ev_no_cubic)
+
+        # Absolute EV of the future with intervention
+        surv_n_1 = survival_arr_1[num_years_per_sim - 1, sim_idx]
+        value_no_cubic    = surv_n_1 * cond_V_earth
+        value_cubic_late  = surv_n_1 * (cond_V_earth + p_Tc2 * (cV_Ts2 + cV_Th3))
+        value_cubic_early = surv_n_1 * (cond_V_earth + exp_adj * (cV_Ts3 + cV_Th3))
+        value_cubic = np.where(
+            p.T_c > num_years_per_sim, value_cubic_late, value_cubic_early
+        )
+        abs_ev_long = np.where(p.cubic_growth, value_cubic, value_no_cubic)
+
+        abs_total = np.zeros(n)
+        for i in range(len(p.periods_value) - 1):
+            lo, hi = p.periods_value[i], p.periods_value[i + 1]
+            abs_total += abs_ev_short[f"{lo} to {hi}"]
+        if after_key in abs_ev_short:
+            abs_total += abs_ev_short[after_key]
+        abs_total += abs_ev_long
 
         # Assemble results
         ev_dict = dict(ev_short)
@@ -436,6 +462,7 @@ class GCRModel:
             "diff_in_survival": diff_in_survival,
             "value_array": value_array,
             "y_const_value": y_const_value,
+            "absolute_total_value_with_intervention": abs_total,
         }
 
 
@@ -683,6 +710,7 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
         "samples": samples,
         "percentiles": percentiles,
         "ev_per_period": results["ev_by_period"],
+        "absolute_total_values": results["absolute_total_value_with_intervention"],
     }
 
 def make_original_notebook_params():

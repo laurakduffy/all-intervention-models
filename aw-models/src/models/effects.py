@@ -96,6 +96,7 @@ def compute_all_effects(fund_key="ea_awf", verbose=False, use_full_samples=True)
     for intervention_key, split_pct in splits.items():
         if not split_pct or split_pct <= 0:
             continue
+        split_pct = split_pct / total_split
 
         if intervention_key not in interventions:
             if verbose:

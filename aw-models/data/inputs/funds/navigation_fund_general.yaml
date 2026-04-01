@@ -34,4 +34,4 @@ fund:
     shrimp_welfare: 0.125
     invertebrate_welfare: 0.025
     wild_animal_welfare: 0.025 
-# 20% unallocated, will assume splits across these
+# 20% unallocated, will assume splits across these proportionally

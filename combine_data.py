@@ -41,10 +41,10 @@ FUND_NAME_MAP = {
 }
 
 PROJECT_METADATA = {
-    'givewell': {'name': 'Givewell', 'color': "#85E4FF"},
+    'givewell': {'name': 'GiveWell', 'color': "#85E4FF"},
     "sentinel_bio": {"name": "Biorisk fund (Sentinel bio)", "color": "#85E4FF"},
-    "longview_nuclear": {"name": "Nuclear fund (Longview)", "color": "#e74c3c"},
-    "longview_ai": {"name": "AI fund (Longview)", "color": "#85E4FF"},
+    "longview_nuclear": {"name": "Nuclear fund (Longview)", "color": "#85E4FF" },
+    "longview_ai": {"name": "AI fund (Longview)", "color":"#e74c3c"},
     "ea_awf": {"name": "EA Animal Welfare Fund", "color": "#85E4FF"},
     "navigation_fund_general": {"name": "The Navigation Fund - General", "color": "#85E4FF"},
     "navigation_fund_cagefree": {"name": "The Navigation Fund - Cage-Free", "color": "#85E4FF"},

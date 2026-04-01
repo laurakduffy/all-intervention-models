@@ -104,7 +104,7 @@ _SENTINEL_REL_RISK_REDUCTION = {
 # because it is ~10x more funded
 
 _AI_REL_REDUCTION_PER_10M = {
-    "values": [v / 10 for v in _NUCLEAR_REL_REDUCTION_PER_10M["values"]],
+    "values": [v / 4 for v in _NUCLEAR_REL_REDUCTION_PER_10M["values"]],
     "p": _NUCLEAR_REL_REDUCTION_PER_10M["p"],
 }
 _AI_REL_RISK_REDUCTION = {

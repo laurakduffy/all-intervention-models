@@ -337,6 +337,40 @@ policy_blend = 0.5 *chicken_sy_per_1000
 # Movement building: 25% of chickens
 movement = 0.25 * chicken_sy_per_1000
 
+def print_animals_per_1000():
+    """Print animals affected per $1000, prior to welfare/harm adjustments.
+
+    Uses the raw reach variables (animals/dollar) before multiplying by
+    suffering hours, proportion reduced, or harm-sign corrections.
+    Chicken is excluded because that model is a direct DALY estimate with
+    no separate animal-count intermediate.
+    """
+    rows = [
+        ("Shrimp (slaughter pathway)",   shrimp_per_dollar_slaughter * 1000),
+        ("Shrimp (sludge/density pathway)", shrimp_per_dollar_sludge * 1000),
+        ("Carp (farmed fish)",            carp_affected_per_dollar * 1000),
+        ("BSF / invertebrates",
+            bsf_num_born * bsf_prop_affected * bsf_success * bsf_persistence / bsf_cost * 1000),
+        ("Wild mammals",
+            wild_mammal_target_pop * wild_mammal_success * wild_mammal_years_impact / wild_mammal_cost * 1000),
+        ("Wild invertebrates",
+            wild_invert_num_born * wild_invert_prop_affected * wild_invert_success * wild_invert_persistence / wild_invert_cost * 1000),
+    ]
+
+    print("\n" + "=" * 70)
+    print("ANIMALS AFFECTED PER $1000  (prior to welfare / harm adjustments)")
+    print("  Note: chicken omitted — model is a direct DALY estimate.")
+    print("=" * 70)
+    print(f"  {'Intervention':<34} {'mean':>12} {'p5':>12} {'p50':>12} {'p95':>12}")
+    print(f"  {'-'*34} {'-'*12} {'-'*12} {'-'*12} {'-'*12}")
+    for name, arr in rows:
+        p = pcts(arr)
+        print(f"  {name:<34} {p['mean']:>12,.0f} {p['p5']:>12,.0f} {p['p50']:>12,.0f} {p['p95']:>12,.0f}")
+    print("=" * 70)
+
+
+print_animals_per_1000()
+
 # ── Write output ──
 
 output = {

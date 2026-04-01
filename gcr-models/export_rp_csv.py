@@ -60,6 +60,8 @@ RISK_PROFILES = [
     "dmreu", "wlu - low", "wlu - moderate", "wlu - high", "ambiguity",
 ]
 
+_ABSOLUTE_EV_PERCENTILES = [0.001, 0.01, 0.1, 1, 5, 10, 25, 50, 75, 90, 95, 99, 99.9, 99.99, 99.999]
+
 
 # ---------------------------------------------------------------------------
 # Sub-extinction tiers (simple EV model)
@@ -206,7 +208,7 @@ def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
 # ---------------------------------------------------------------------------
 # Sweep runner + risk profile extraction
 # ---------------------------------------------------------------------------
-def run_fund_and_extract(fund_key, n_samples=100000, verbose=True):
+def run_fund_and_extract(fund_key, n_samples=100000, verbose=True, seed=42):
     """Run Monte Carlo sampling for one fund, return horizon data + summary."""
     profile = get_fund_profile(fund_key)
     budget = profile["budget"]
@@ -216,7 +218,7 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True):
         print(f"\n{'=' * 60}")
         print(f"Running MC: {profile['display_name']}")
         print(f"  Budget: ${budget / 1e6:.1f}M  |  Adjustment: {adj:.3f}")
-        print(f"  Samples: {n_samples:,}")
+        print(f"  Samples: {n_samples:,}  |  Seed: {seed}")
         print(f"{'=' * 60}")
 
     t0 = time.time()
@@ -228,6 +230,7 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True):
         p_harm=profile.get("p_harm", 0.0),
         p_zero=profile.get("p_zero", 0.0),
         harm_multiplier=profile.get("harm_multiplier", 1.0),
+        seed=seed,
     )
     elapsed = time.time() - t0
 
@@ -272,6 +275,8 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True):
               f"wlu high={total_profiles['wlu - high']:.4g}  "
               f"ambiguity={total_profiles['ambiguity']:.4g}")
 
+    absolute_total_values = results["absolute_total_values"]
+
     sub_ext_rows = _compute_sub_extinction_rows(profile, n_samples=n_samples, verbose=verbose)
 
     return {
@@ -280,6 +285,7 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True):
         "summary": summary,
         "sub_ext_rows": sub_ext_rows,
         "total_per_1m": total_per_1m,
+        "absolute_total_values": absolute_total_values,
     }
 
 
@@ -509,6 +515,98 @@ def write_summary_statistics(fund_results, output_path, verbose=True):
 
 
 # ---------------------------------------------------------------------------
+# Absolute EV of future — percentiles and histograms
+# ---------------------------------------------------------------------------
+
+def write_absolute_ev_csv(fund_results, output_path, verbose=True):
+    """Write fine-percentile CSV for absolute EV of the future with intervention.
+
+    Values are in person-years (the same units as the model's initial_value = 8e9 people).
+    No per-$1M normalisation — this is the total expected future, not the marginal effect.
+    No harm adjustment — represents the raw simulated world state under the intervention.
+    """
+    pct_labels = [f"p{p}" for p in _ABSOLUTE_EV_PERCENTILES]
+    fieldnames = ["fund", "display_name", "n_samples", "mean"] + pct_labels
+    rows = []
+    for fr in fund_results:
+        samples = fr["absolute_total_values"]
+        row = {
+            "fund": fr["profile"]["export"]["project_id"],
+            "display_name": fr["profile"]["display_name"],
+            "n_samples": len(samples),
+            "mean": float(np.mean(samples)),
+        }
+        for p, label in zip(_ABSOLUTE_EV_PERCENTILES, pct_labels):
+            row[label] = float(np.percentile(samples, p))
+        rows.append(row)
+
+    with open(output_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    if verbose:
+        print(f"\nAbsolute EV percentiles written to: {output_path}")
+        for row in rows:
+            print(f"  {row['display_name']}: "
+                  f"p50={row['p50']:.4g}  p99={row['p99']:.4g}  mean={row['mean']:.4g}")
+
+
+def create_absolute_ev_histograms(fund_results, output_dir, verbose=True):
+    """Save linear and log-scale histograms of absolute EV of the future with intervention."""
+    os.makedirs(output_dir, exist_ok=True)
+    for fr in fund_results:
+        samples = fr["absolute_total_values"]
+        project_id = fr["profile"]["export"]["project_id"]
+        display_name = fr["profile"]["display_name"]
+
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        fig.suptitle(f"{display_name}\nAbsolute EV of future with intervention (person-years)", fontsize=12)
+
+        # Linear scale
+        axes[0].hist(samples, bins=60, alpha=0.75, color="steelblue", edgecolor="none")
+        axes[0].set_xlabel("Person-years")
+        axes[0].set_ylabel("Frequency")
+        axes[0].set_title("Linear scale")
+        axes[0].axvline(float(np.mean(samples)), color="red", linestyle="--", linewidth=1.2,
+                        label=f"Mean = {np.mean(samples):.3g}")
+        axes[0].axvline(float(np.median(samples)), color="orange", linestyle="--", linewidth=1.2,
+                        label=f"Median = {np.median(samples):.3g}")
+        axes[0].legend(fontsize=9)
+
+        # Log scale — positive values only
+        pos = samples[samples > 0]
+        if len(pos) > 0:
+            log_bins = np.logspace(
+                np.log10(np.percentile(pos, 0.1)),
+                np.log10(np.percentile(pos, 99.9)),
+                60,
+            )
+            axes[1].hist(pos, bins=log_bins, alpha=0.75, color="steelblue", edgecolor="none")
+            axes[1].set_xscale("log")
+            axes[1].axvline(float(np.mean(pos)), color="red", linestyle="--", linewidth=1.2,
+                            label=f"Mean = {np.mean(pos):.3g}")
+            axes[1].axvline(float(np.median(pos)), color="orange", linestyle="--", linewidth=1.2,
+                            label=f"Median = {np.median(pos):.3g}")
+            axes[1].legend(fontsize=9)
+            pct_nonpos = 100 * np.sum(samples <= 0) / len(samples)
+            axes[1].set_title(f"Log scale (positive only; {pct_nonpos:.1f}% ≤ 0 excluded)")
+        else:
+            axes[1].text(0.5, 0.5, "No positive values", ha="center", va="center",
+                         transform=axes[1].transAxes)
+            axes[1].set_title("Log scale")
+        axes[1].set_xlabel("Person-years")
+        axes[1].set_ylabel("Frequency")
+
+        plt.tight_layout()
+        out_path = os.path.join(output_dir, f"{project_id}_absolute_ev_histogram.png")
+        plt.savefig(out_path, dpi=150)
+        plt.close()
+        if verbose:
+            print(f"  Saved: {out_path}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
@@ -527,6 +625,10 @@ def main():
         "--quiet", action="store_true",
         help="Suppress per-fund progress output.",
     )
+    parser.add_argument(
+        "--seed", type=int, default=42,
+        help="Random seed for Monte Carlo sampling (default: 42).",
+    )
     args = parser.parse_args()
     verbose = not args.quiet
 
@@ -536,7 +638,7 @@ def main():
 
     fund_results = []
     for fk in FUND_KEYS:
-        fr = run_fund_and_extract(fk, n_samples=args.n_samples, verbose=verbose)
+        fr = run_fund_and_extract(fk, n_samples=args.n_samples, verbose=verbose, seed=args.seed)
         fund_results.append(fr)
 
     # Write main effects CSV
@@ -556,6 +658,15 @@ def main():
     # Summary statistics
     stats_output = str(Path(args.output).with_suffix("")) + "_summary_stats.csv"
     write_summary_statistics(fund_results, stats_output, verbose=verbose)
+
+    # Absolute EV of future — percentiles CSV
+    abs_ev_csv = str(Path(args.output).with_suffix("")) + "_absolute_ev_percentiles.csv"
+    write_absolute_ev_csv(fund_results, abs_ev_csv, verbose=verbose)
+
+    # Absolute EV of future — histograms
+    abs_hist_dir = str(Path(args.output).parent / "histograms" / "absolute_ev")
+    print(f"\nCreating absolute EV histograms in: {abs_hist_dir}")
+    create_absolute_ev_histograms(fund_results, abs_hist_dir, verbose=verbose)
 
     if not ok:
         print("\nExport completed with validation errors!")
