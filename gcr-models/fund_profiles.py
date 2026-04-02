@@ -46,7 +46,7 @@ def _r_max_from_cumulative_risk(
 # ---------------------------------------------------------------------------
 _AI_CAUSE_FRACTION      = 0.9  
 _NUCLEAR_CAUSE_FRACTION = 0.03           
-_BIO_CAUSE_FRACTION     = 0.03 
+_BIO_CAUSE_FRACTION     = 0.03
 
 _SENTINEL_BUDGET = 7.2 * M 
 _NUCLEAR_BUDGET  = 5.7 * M 

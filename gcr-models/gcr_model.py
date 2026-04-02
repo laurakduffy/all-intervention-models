@@ -482,7 +482,7 @@ def _get_values_and_p(entry):
     return list(entry), None
 
 
-def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, p_harm=0.0, p_zero=0.0, harm_multiplier=1.0, seed=42):
+def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, p_harm=0.0, p_zero=0.0, harm_multiplier=1.0, seed=43):
     """Run the GCR model with Monte Carlo sampling and stratified harm assignment.
 
     Args:

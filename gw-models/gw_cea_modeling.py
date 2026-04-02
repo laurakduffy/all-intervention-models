@@ -63,24 +63,24 @@ sample_units_value_per_M = sample_units_value_per_m()
 summarize_array(sample_units_value_per_M)
 
 ## Estimate the percent of GW's effect that is in the form of life-years saved, YLDs averted, and income doublings.
-## See here: https://docs.google.com/spreadsheets/d/1cKN0tWL-76SmElE5N4F7xaySzUQ_bU24ZbN64ObUIRw/edit?gid=0#gid=0&range=A1:B1
+
 percent_effect_by_type_dict = {
     'Malaria prevention and treatment': 
-        {'YLDs_averted': 0.145, 'lives_saved': 0.459, 'income_doublings': 0.396},
+        {'YLDs_averted': 0.0939, 'lives_saved': 0.5209, 'income_doublings': 0.3852},
     'Vaccinations': 
-        {'YLDs_averted': 0.050, 'lives_saved': 0.623, 'income_doublings': 0.327},
+        {'YLDs_averted': 0.0514, 'lives_saved': 0.6157, 'income_doublings': 0.3328},
     'Malnutrition treatment': 
-        {'YLDs_averted': 0.033, 'lives_saved': 0.767, 'income_doublings': 0.200},
+        {'YLDs_averted': 0.0350, 'lives_saved': 0.7559, 'income_doublings': 0.2091},
     'Water quality': 
-        {'YLDs_averted': 0.028, 'lives_saved': 0.665, 'income_doublings': 0.307},
+        {'YLDs_averted': 0.0276, 'lives_saved': 0.6650, 'income_doublings': 0.3074},
     'VAS': 
-        {'YLDs_averted': 0.144, 'lives_saved': 0.491, 'income_doublings': 0.365},
+        {'YLDs_averted': 0.1107, 'lives_saved': 0.5509, 'income_doublings': 0.3384},
     'Iron fortification': 
         {'YLDs_averted': 0.580, 'lives_saved': 0.000, 'income_doublings': 0.420},
     'Livelihood programs': 
-        {'YLDs_averted': 0.091, 'lives_saved': 0.093, 'income_doublings': 0.816},
+        {'YLDs_averted': 0.0909, 'lives_saved': 0.0931, 'income_doublings': 0.8160},
     'Family planning': 
-        {'YLDs_averted': 0.400, 'lives_saved': 0.200, 'income_doublings': 0.400},
+        {'YLDs_averted': 0.4002, 'lives_saved': 0.1994, 'income_doublings': 0.4005},
 }
 
 percent_funding_by_dist_dict = {

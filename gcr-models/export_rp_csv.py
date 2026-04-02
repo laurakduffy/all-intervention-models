@@ -208,7 +208,7 @@ def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
 # ---------------------------------------------------------------------------
 # Sweep runner + risk profile extraction
 # ---------------------------------------------------------------------------
-def run_fund_and_extract(fund_key, n_samples=100000, verbose=True, seed=42):
+def run_fund_and_extract(fund_key, n_samples=100000, verbose=True, seed=43):
     """Run Monte Carlo sampling for one fund, return horizon data + summary."""
     profile = get_fund_profile(fund_key)
     budget = profile["budget"]
@@ -626,8 +626,8 @@ def main():
         help="Suppress per-fund progress output.",
     )
     parser.add_argument(
-        "--seed", type=int, default=42,
-        help="Random seed for Monte Carlo sampling (default: 42).",
+        "--seed", type=int, default=43,
+        help="Random seed for Monte Carlo sampling (default: 43).",
     )
     args = parser.parse_args()
     verbose = not args.quiet
