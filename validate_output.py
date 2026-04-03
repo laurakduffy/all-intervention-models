@@ -14,8 +14,13 @@ _parser.add_argument(
     choices=['optimistic', 'pessimistic', 'median', 'fund_estimated'],
     help='GCR diminishing returns scenario to validate against (default: median)'
 )
+_parser.add_argument(
+    '--gcr-model', default='gcr-models', choices=['gcr-models', 'gcr-models-mc'],
+    help='GCR model folder to validate against (default: gcr-models)'
+)
 _args = _parser.parse_args()
 GCR_DMR_SCENARIO = _args.gcr_dmr_scenario
+GCR_MODEL = _args.gcr_model
 
 TOLERANCE = 1e-6  # relative tolerance for float comparisons
 
@@ -125,7 +130,7 @@ def validate_diminishing_returns(projects, gcr_dmr_scenario='median'):
         pd.read_csv('gw-models/givewell_diminishing_returns.csv'),
         pd.read_csv('aw-models/data/inputs/ea_awf_diminishing_returns.csv'),
         pd.read_csv('aw-models/data/inputs/navigation_fund_diminishing_returns.csv'),
-        pd.read_csv('gcr-models/diminishing_returns/{}_diminishing_returns_gcr.csv'.format(gcr_dmr_scenario)),
+        pd.read_csv('{}/diminishing_returns/{}_diminishing_returns_gcr.csv'.format(GCR_MODEL, gcr_dmr_scenario)),
         pd.read_csv('leaf-models/leaf_diminishing_returns.csv'),
     ]
     combined = pd.concat(source_dfs, ignore_index=True)

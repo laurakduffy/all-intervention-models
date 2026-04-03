@@ -18,15 +18,22 @@ if __name__ == '__main__':
         '--gcr-dmr-scenario', default='median', choices=_GCR_DMR_SCENARIOS,
         help='GCR diminishing returns scenario (default: median)'
     )
-    GCR_DMR_SCENARIO = _parser.parse_args().gcr_dmr_scenario
+    _parser.add_argument(
+        '--gcr-model', default='gcr-models', choices=['gcr-models', 'gcr-models-mc'],
+        help='GCR model folder to read outputs from (default: gcr-models)'
+    )
+    _args = _parser.parse_args()
+    GCR_DMR_SCENARIO = _args.gcr_dmr_scenario
+    GCR_MODEL = _args.gcr_model
 else:
     GCR_DMR_SCENARIO = 'median'
+    GCR_MODEL = 'gcr-models'
 
 # combine the diminishing returns data from the three models into a single dataframe
 gw_diminishing_returns = pd.read_csv('gw-models/givewell_diminishing_returns.csv')
 ea_awf_diminishing_returns = pd.read_csv('aw-models/data/inputs/ea_awf_diminishing_returns.csv')
 navigation_fund_diminishing_returns = pd.read_csv('aw-models/data/inputs/navigation_fund_diminishing_returns.csv')
-gcr_diminishing_returns = pd.read_csv('gcr-models/diminishing_returns/{}_diminishing_returns_gcr.csv'.format(GCR_DMR_SCENARIO))
+gcr_diminishing_returns = pd.read_csv('{}/diminishing_returns/{}_diminishing_returns_gcr.csv'.format(GCR_MODEL, GCR_DMR_SCENARIO))
 leaf_diminishing_returns = pd.read_csv('leaf-models/leaf_diminishing_returns.csv')
 
 FUND_NAME_MAP = {
@@ -107,7 +114,7 @@ gw_risk_scores = pd.read_csv('gw-models/gw_risk_adjusted.csv')
 ea_awf_risk_scores = pd.read_csv('aw-models/outputs/ea_awf_dataset.csv')
 navigation_fund_general_risk_scores = pd.read_csv('aw-models/outputs/navigation_fund_general_dataset.csv')
 navigation_fund_cagefree_risk_scores = pd.read_csv('aw-models/outputs/navigation_fund_cagefree_dataset.csv')
-gcr_risk_scores = pd.read_csv('gcr-models/gcr_output.csv', skiprows=1)
+gcr_risk_scores = pd.read_csv('{}/gcr_output.csv'.format(GCR_MODEL), skiprows=1)
 leaf_risk_scores = pd.read_csv('leaf-models/leaf_risk_adjusted.csv')
 
 

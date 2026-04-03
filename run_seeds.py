@@ -31,15 +31,20 @@ _parser.add_argument(
     "--quiet", action="store_true",
     help="Suppress per-fund progress output.",
 )
+_parser.add_argument(
+    "--gcr-model", default="gcr-models", choices=["gcr-models", "gcr-models-mc"],
+    help="GCR model folder to run and read outputs from (default: gcr-models)",
+)
 _args = _parser.parse_args()
 
 seeds_root = ROOT / "outputs" / "seeds"
 seeds_root.mkdir(parents=True, exist_ok=True)
 
-gcr_output   = ROOT / "gcr-models" / "gcr_output.csv"
-gcr_stats    = ROOT / "gcr-models" / "gcr_output_summary_stats.csv"
-gcr_abs_ev   = ROOT / "gcr-models" / "gcr_output_absolute_ev_percentiles.csv"
-gcr_hists    = ROOT / "gcr-models" / "histograms"
+gcr_dir    = ROOT / _args.gcr_model
+gcr_output = gcr_dir / "gcr_output.csv"
+gcr_stats  = gcr_dir / "gcr_output_summary_stats.csv"
+gcr_abs_ev = gcr_dir / "gcr_output_absolute_ev_percentiles.csv"
+gcr_hists  = gcr_dir / "histograms"
 
 for seed in _args.seeds:
     seed_dir = seeds_root / f"seed_{seed}"
@@ -51,7 +56,7 @@ for seed in _args.seeds:
 
     # --- GCR model ---
     gcr_cmd = [
-        sys.executable, str(ROOT / "gcr-models" / "export_rp_csv.py"),
+        sys.executable, str(gcr_dir / "export_rp_csv.py"),
         "--seed", str(seed),
         "--n-samples", str(_args.n_samples),
         "--n-batches", str(_args.n_batches)
@@ -63,7 +68,8 @@ for seed in _args.seeds:
     # --- combine_data ---
     subprocess.run(
         [sys.executable, str(ROOT / "combine_data.py"),
-         "--gcr-dmr-scenario", _args.gcr_dmr_scenario],
+         "--gcr-dmr-scenario", _args.gcr_dmr_scenario,
+         "--gcr-model", _args.gcr_model],
         cwd=ROOT, check=True,
     )
 
