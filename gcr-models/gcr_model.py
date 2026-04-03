@@ -699,15 +699,8 @@ def run_monte_carlo(sweep_params, fixed_params, n_samples=10000, verbose=False, 
         else:
             print(f"  ({n_pos:,} pos, {n_neg:,} neg)")
             
-    # Build sample list for inspection
-    samples = []
-    for i in range(actual_n_samples):
-        sample = {k: v[i] for k, v in param_samples.items()}
-        samples.append(sample)
-    
     return {
         "total_values": total_values,
-        "samples": samples,
         "percentiles": percentiles,
         "ev_per_period": results["ev_by_period"],
         "absolute_total_values": results["absolute_total_value_with_intervention"],

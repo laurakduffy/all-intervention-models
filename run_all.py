@@ -12,6 +12,14 @@ _parser.add_argument(
     choices=['optimistic', 'pessimistic', 'median', 'fund_estimated'],
     help='GCR diminishing returns scenario passed to combine_data.py (default: median)'
 )
+_parser.add_argument(
+    '--n-samples', type=int, default=1000000,
+    help='Number of samples to run for GCR models'
+)
+_parser.add_argument(
+    '--n-batches', type=int, default=10,
+    help='Number of batches to split GCR runs into'
+)
 _args = _parser.parse_args()
 
 scripts = [
@@ -19,7 +27,7 @@ scripts = [
     (ROOT / "aw-models/run.py",                                ROOT / "aw-models", []),
     (ROOT / "gw-models/gw_cea_modeling.py",                    ROOT,             []),
     (ROOT / "leaf-models/leaf_cea_model.py",                   ROOT,             []),
-    (ROOT / "gcr-models/export_rp_csv.py",                     ROOT,             []),
+    (ROOT / "gcr-models/export_rp_csv.py",                     ROOT,             ['--n-samples', str(_args.n_samples), '--n-batches', str(_args.n_batches)]),
     (ROOT / "combine_data.py",                                  ROOT,             ['--gcr-dmr-scenario', _args.gcr_dmr_scenario]),
 ]
 

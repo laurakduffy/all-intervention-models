@@ -11,8 +11,12 @@ SEEDS = [42, 43, 44, 45, 46]
 
 _parser = argparse.ArgumentParser(description="Run seed sensitivity analysis for GCR models.")
 _parser.add_argument(
-    "--n-samples", type=int, default=100000,
-    help="Monte Carlo samples per fund per seed (default: 100000).",
+    "--n-samples", type=int, default=1000000,
+    help="Monte Carlo samples per fund per seed (default: 1,000,000).",
+)
+_parser.add_argument(
+    "--n-batches", type=int, default=10,
+    help="Batches to run for GCR simulations (default=10).",
 )
 _parser.add_argument(
     "--gcr-dmr-scenario", default="median",
@@ -50,6 +54,7 @@ for seed in _args.seeds:
         sys.executable, str(ROOT / "gcr-models" / "export_rp_csv.py"),
         "--seed", str(seed),
         "--n-samples", str(_args.n_samples),
+        "--n-batches", str(_args.n_batches)
     ]
     if _args.quiet:
         gcr_cmd.append("--quiet")

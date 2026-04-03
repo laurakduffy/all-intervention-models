@@ -208,7 +208,7 @@ def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
 # ---------------------------------------------------------------------------
 # Sweep runner + risk profile extraction
 # ---------------------------------------------------------------------------
-def run_fund_and_extract(fund_key, n_samples=100000, verbose=True, seed=43):
+def run_fund_and_extract(fund_key, n_samples=1000000, n_batches = 10, verbose=True, seed=43):
     """Run Monte Carlo sampling for one fund, return horizon data + summary."""
     profile = get_fund_profile(fund_key)
     budget = profile["budget"]
@@ -221,30 +221,51 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True, seed=43):
         print(f"  Samples: {n_samples:,}  |  Seed: {seed}")
         print(f"{'=' * 60}")
 
-    t0 = time.time()
-    results = run_monte_carlo(
-        sweep_params=profile["sweep_params"],
-        fixed_params=profile["fixed_params"],
-        n_samples=n_samples,
-        verbose=verbose,
-        p_harm=profile.get("p_harm", 0.0),
-        p_zero=profile.get("p_zero", 0.0),
-        harm_multiplier=profile.get("harm_multiplier", 1.0),
-        seed=seed,
-    )
-    elapsed = time.time() - t0
+    ev_dicts = []
+    abs_val_dicts = []
+    
+    batch_size = n_samples // n_batches
+    for i in range(n_batches):
+        t0 = time.time()
+        results = run_monte_carlo(
+            sweep_params=profile["sweep_params"],
+            fixed_params=profile["fixed_params"],
+            n_samples=batch_size,
+            verbose=verbose,
+            p_harm=profile.get("p_harm", 0.0),
+            p_zero=profile.get("p_zero", 0.0),
+            harm_multiplier=profile.get("harm_multiplier", 1.0),
+            seed=seed,
+        )
+        elapsed = time.time() - t0
 
-    if verbose:
-        print(f"  Done: {n_samples:,} samples in {elapsed:.1f}s")
+        if verbose:
+            print(f"  Done: {batch_size:,} samples in {elapsed:.1f}s")
 
-    evp = results["ev_per_period"]
-    zeros = np.zeros(n_samples)
+        evp = results["ev_per_period"]
+        ev_dicts.append(evp)
+
+        absolute_total_values = results["absolute_total_values"]
+        abs_val_dicts.append(absolute_total_values)
+        
+        seed = seed + 1
+
+    ev_dicts = np.array(ev_dicts)
+    evp_all =  {
+        pk: np.concatenate([d[pk] for d in ev_dicts])
+        for pk in ev_dicts[0]
+    }
+
+    abs_val_dicts = np.array(abs_val_dicts)
+    absolute_total_values_all =  np.concatenate(abs_val_dicts)
+
+    zeros = np.zeros(n_batches * batch_size)
 
     horizon_raw = {}
     for pk in SHORT_PERIOD_KEYS:
-        horizon_raw[pk] = evp.get(pk, zeros.copy())
+        horizon_raw[pk] = evp_all.get(pk, zeros.copy())
 
-    total_raw = evp["Total Value"]
+    total_raw = evp_all["Total Value"]
     sum_short = sum(horizon_raw[pk] for pk in SHORT_PERIOD_KEYS)
     horizon_raw["after_500_plus"] = total_raw - sum_short
 
@@ -258,7 +279,7 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True, seed=43):
     total_per_1m = total_raw * adj / budget * 1e6
     total_profiles = compute_risk_profiles(total_per_1m)
     summary = {
-        "n_samples": n_samples,
+        "n_samples": n_batches * batch_size,
         **{f"total_{k}": v for k, v in total_profiles.items()},
     }
 
@@ -275,8 +296,6 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True, seed=43):
               f"wlu high={total_profiles['wlu - high']:.4g}  "
               f"ambiguity={total_profiles['ambiguity']:.4g}")
 
-    absolute_total_values = results["absolute_total_values"]
-
     sub_ext_rows = _compute_sub_extinction_rows(profile, n_samples=n_samples, verbose=verbose)
 
     return {
@@ -285,7 +304,7 @@ def run_fund_and_extract(fund_key, n_samples=100000, verbose=True, seed=43):
         "summary": summary,
         "sub_ext_rows": sub_ext_rows,
         "total_per_1m": total_per_1m,
-        "absolute_total_values": absolute_total_values,
+        "absolute_total_values": absolute_total_values_all,
     }
 
 
@@ -618,8 +637,12 @@ def main():
         help="Output CSV path for effects (default: gcr_output.csv). Diminishing returns will be saved to diminishing_returns/gcr_diminishing_returns_{N}yr.csv",
     )
     parser.add_argument(
-        "--n-samples", type=int, default=100000,
-        help="Number of Monte Carlo samples per fund (default: 100000).",
+        "--n-samples", type=int, default=1000000,
+        help="Number of Monte Carlo samples per fund (default: 1,000,000).",
+    )
+    parser.add_argument(
+        "--n-batches", type=int, default=10, 
+        help="Number of batches to run total to economize on RAM.",
     )
     parser.add_argument(
         "--quiet", action="store_true",
@@ -638,7 +661,7 @@ def main():
 
     fund_results = []
     for fk in FUND_KEYS:
-        fr = run_fund_and_extract(fk, n_samples=args.n_samples, verbose=verbose, seed=args.seed)
+        fr = run_fund_and_extract(fk, n_samples=args.n_samples, n_batches=args.n_batches, verbose=verbose, seed=args.seed)
         fund_results.append(fr)
 
     # Write main effects CSV

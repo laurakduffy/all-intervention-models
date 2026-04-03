@@ -248,7 +248,6 @@ def test_sample_count():
     assert len(r["total_values"]) == n, (
         f"Expected {n} samples, got {len(r['total_values'])}."
     )
-    assert len(r["samples"]) == n
 
 
 # ---------------------------------------------------------------------------
