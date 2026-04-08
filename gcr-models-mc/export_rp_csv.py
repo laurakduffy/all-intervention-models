@@ -9,7 +9,7 @@ All risk profiles:
   Informal adjustments:
     neutral  = risk-neutral expected value (mean)
     upside   = upside skepticism — truncate upper tail at p99, renormalise
-    downside = downside protection — loss-averse utility (lambda=2.5, ref=median)
+    downside = downside protection — loss-averse utility (lambda=5.0, ref=0)
     combined = percentile-based weighting + loss aversion 
 
   Formal models (Duffy 2023):
@@ -25,7 +25,6 @@ Usage:
 
 import argparse
 import csv
-import itertools
 import os
 import sys
 import time
@@ -37,7 +36,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from fund_profiles import get_fund_profile
-from gcr_model import run_monte_carlo
+from gcr_model import _dirichlet_lhs, _lhs_quantiles, _ppf, run_monte_carlo
+from param_distributions import write_param_percentiles
 from risk_profiles import compute_risk_profiles
 
 # ---------------------------------------------------------------------------
@@ -72,132 +72,123 @@ _ABSOLUTE_EV_PERCENTILES = [0.001, 0.01, 0.1, 1, 5, 10, 25, 50, 75, 90, 95, 99, 
 _PERIOD_BOUNDS = [(0, 5), (5, 10), (10, 20), (20, 100), (100, 500), (500, None)]
 
 
-def _years_in_period(persistence, start, end):
-    """How many years of [0, persistence] overlap with [start, end)."""
-    if end is None:
-        return max(0.0, persistence - start)
-    return max(0.0, min(persistence, end) - max(0.0, start))
+def _years_in_period(persistence, year_effect_starts, t_start, t_end):
+    """Years of [year_effect_starts, year_effect_starts+persistence] overlapping [t_start, t_end).
 
-def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True):
-    """Compute sub-extinction effect rows using Monte Carlo sampling with stratification."""
-    p_harm = profile.get("p_harm", 0.0)
-    p_zero = profile.get("p_zero", 0.0)
-    harm_multiplier = profile.get("harm_multiplier", 1.0)
+    Works with numpy arrays or scalars for all arguments.
+    """
+    eff_start = year_effect_starts
+    eff_end   = year_effect_starts + persistence
+    if t_end is None:
+        return np.maximum(0.0, eff_end - np.maximum(eff_start, t_start))
+    return np.maximum(0.0, np.minimum(eff_end, t_end) - np.maximum(eff_start, t_start))
+
+
+def _compute_sub_extinction_rows(profile, n_samples=100000, verbose=True, seed=43):
+    """Compute sub-extinction effect rows using MC sampling."""
     tiers = profile.get("sub_extinction_tiers", [])
     if not tiers:
         return []
 
+    param_specs = profile.get("param_specs", {})
     budget = profile["budget"]
-    adj = profile["adjustment_factor"]
-    project_id = profile["export"]["project_id"]
+    rng = np.random.default_rng(seed)
     all_pk = SHORT_PERIOD_KEYS + ["after_500_plus"]
     rows = []
 
-    def _sweep_vals_probs(entry):
-        if isinstance(entry, dict):
-            vals = list(entry["values"])
-            probs = entry.get("p", None)
-            if probs is None:
-                probs = [1.0 / len(vals)] * len(vals)
-            return vals, probs
-        vals = list(entry)
-        return vals, [1.0 / len(vals)] * len(vals)
+    def _lhs(spec):
+        return _ppf(spec, _lhs_quantiles(n_samples, rng))
 
-    # Get all combinations to stratify by
-    first_tier = tiers[0]
-    rel_rr_vals, rel_rr_probs = _sweep_vals_probs(first_tier["sweep_rel_rr"])
-    pers_vals, pers_probs = _sweep_vals_probs(first_tier["sweep_persistence"])
-    combos = list(itertools.product(rel_rr_vals, pers_vals))
-    combo_probs = [
-        rel_rr_probs[i] * pers_probs[j]
-        for i in range(len(rel_rr_vals))
-        for j in range(len(pers_vals))
-    ]
-    n_combos = len(combos)
+    # ── Shared fund parameters ─────────────────────────────────────────────
+    rel_rr_samples          = _lhs(param_specs["rel_risk_reduction"])
+    persistence_samples     = _lhs(param_specs["persistence_effect"])
+    counterfactual_samples  = _lhs(param_specs["counterfactual_factor"])
 
-    # Allocate samples proportionally to combo probabilities
-    raw_counts = [n_samples * p for p in combo_probs]
-    stratum_counts = [int(c) for c in raw_counts]
-    leftover = n_samples - sum(stratum_counts)
-    order = sorted(range(n_combos), key=lambda i: -(raw_counts[i] - stratum_counts[i]))
-    for i in order[:leftover]:
-        stratum_counts[i] += 1
+    year_effect_starts_spec = param_specs.get("year_effect_starts")
+    if year_effect_starts_spec is not None:
+        year_effect_starts_samples = _lhs(year_effect_starts_spec)
+    else:
+        year_effect_starts_samples = np.zeros(n_samples)
 
-    # Build stratified samples
-    rel_rr_samples = []
-    persistence_samples = []
-    shared_causes_harm = []
-    shared_causes_zero = []
+    harm_mult_spec = param_specs.get("harm_multiplier")
+    if harm_mult_spec is not None:
+        harm_mult_samples = _lhs(harm_mult_spec)
+    else:
+        harm_mult_samples = np.full(n_samples, profile.get("harm_multiplier", 1.0))
 
-    for i, (rel_rr, pers) in enumerate(combos):
-        n_in_combo = stratum_counts[i]
+    # ── Harm / zero / positive (Dirichlet) ────────────────────────────────
+    hzp_spec = next(
+        (spec for spec in param_specs.values()
+         if spec.get("dist") == "dirichlet" and "p_harm" in spec.get("keys", [])),
+        None,
+    )
+    if hzp_spec is not None:
+        if "alpha" in hzp_spec:
+            alpha = np.array(hzp_spec["alpha"])
+        else:
+            alpha = np.array(hzp_spec["means"]) * hzp_spec["concentration"]
+        hzp_matrix  = _dirichlet_lhs(alpha, n_samples, rng)  # (n, 3)
+        keys        = hzp_spec["keys"]
+        p_harm_arr  = hzp_matrix[:, keys.index("p_harm")]
+        p_zero_arr  = hzp_matrix[:, keys.index("p_zero")]
+    else:
+        p_harm_arr = np.full(n_samples, profile.get("p_harm", 0.0))
+        p_zero_arr = np.full(n_samples, profile.get("p_zero", 0.0))
 
-        rel_rr_samples.extend([rel_rr] * n_in_combo)
-        persistence_samples.extend([pers] * n_in_combo)
+    u_fx     = rng.random(n_samples)
+    is_harm  = u_fx < p_harm_arr
+    is_zero  = (u_fx >= p_harm_arr) & (u_fx < p_harm_arr + p_zero_arr)
 
-        # Three-category assignment: zero, positive, harm
-        # Derive n_positive as remainder to guarantee total == n_in_combo
-        n_harm = int(n_in_combo * p_harm)
-        n_zero = int(n_in_combo * p_zero)
-        remainder_harm = n_in_combo * p_harm - n_harm
-        remainder_zero = n_in_combo * p_zero - n_zero
-
-        rand_val = np.random.random()
-        if rand_val < remainder_harm:
-            n_harm += 1
-        elif rand_val < remainder_harm + remainder_zero:
-            n_zero += 1
-        n_positive = n_in_combo - n_harm - n_zero
-
-        effects = np.array([2] * n_harm + [0] * n_zero + [1] * n_positive, dtype=np.int8)
-        np.random.shuffle(effects)
-        shared_causes_harm.extend(effects == 2)
-        shared_causes_zero.extend(effects == 0)
-
-    rel_rr_samples = np.array(rel_rr_samples)
-    persistence_samples = np.array(persistence_samples)
-    shared_causes_harm = np.array(shared_causes_harm)
-    shared_causes_zero = np.array(shared_causes_zero)
-
+    # ── Per-tier ──────────────────────────────────────────────────────────
     for tier in tiers:
-        p_annual = 1 - (1 - tier["p_10yr"]) ** (1 / 10)
-        discount = tier.get("discount", 1.0)
+        expected_deaths = tier["expected_deaths"]
+
+        p_10yr_dist = tier.get("p_10yr_dist")
+        if p_10yr_dist is not None:
+            p_10yr_samples = _lhs(p_10yr_dist)
+        else:
+            p_10yr_samples = np.full(n_samples, tier["p_10yr"])
+        p_annual_samples = 1.0 - (1.0 - p_10yr_samples) ** (1.0 / 10.0)
+
+        discount_dist = tier.get("discount_dist")
+        if isinstance(discount_dist, dict):
+            discount_samples = _lhs(discount_dist)
+        else:
+            discount_samples = np.full(n_samples, discount_dist if discount_dist is not None else 1.0)
 
         annual_evs = (
-            p_annual * tier["expected_deaths"] * rel_rr_samples
-            * adj * discount
+            p_annual_samples * expected_deaths
+            * rel_rr_samples * counterfactual_samples * discount_samples
         )
-        
-        annual_evs = np.where(shared_causes_zero, 0.0, annual_evs)
-        annual_evs = np.where(shared_causes_harm, -annual_evs * harm_multiplier, annual_evs)
-        
+        annual_evs = np.where(is_zero, 0.0, annual_evs)
+        annual_evs = np.where(is_harm, -annual_evs * harm_mult_samples, annual_evs)
+
         horizon_data = {}
         for pk, (t_start, t_end) in zip(all_pk, _PERIOD_BOUNDS):
-            yrs = np.array([_years_in_period(p, t_start, t_end)
-                            for p in persistence_samples])
+            yrs        = _years_in_period(persistence_samples, year_effect_starts_samples, t_start, t_end)
             period_evs = annual_evs * yrs
-            per_1m = period_evs / budget * 1e6
+            per_1m     = period_evs / budget * 1e6
             horizon_data[pk] = compute_risk_profiles(per_1m)
 
-        total_per_1m = annual_evs * persistence_samples / budget * 1e6
-        total_profiles = compute_risk_profiles(total_per_1m)
+        total_per_1m    = annual_evs * persistence_samples / budget * 1e6
+        total_profiles  = compute_risk_profiles(total_per_1m)
 
         if verbose:
-            n_positive = np.sum(total_per_1m > 0)
-            n_negative = np.sum(total_per_1m < 0)
-            actual_samples = len(total_per_1m)
+            n_pos = int(np.sum(total_per_1m > 0))
+            n_neg = int(np.sum(total_per_1m < 0))
+            n_tot = len(total_per_1m)
             print(f"  Sub-ext tier '{tier['tier_name']}': "
-                  f"{actual_samples:,} MC samples (stratified), "
+                  f"{n_tot:,} MC samples, "
                   f"neutral={total_profiles['neutral']:.4g} lives-eq/$1M "
-                  f"({n_positive:,} pos, {n_negative:,} neg = {100*n_negative/actual_samples:.1f}% harm)")
+                  f"({n_pos:,} pos, {n_neg:,} neg = {100*n_neg/n_tot:.1f}% harm)")
 
         rows.append({
             "export_meta": {
-                "project_id": tier.get("project_id", project_id),
+                "project_id":     tier.get("project_id", profile["export"]["project_id"]),
                 "near_term_xrisk": tier.get("near_term_xrisk", False),
-                "effect_id": tier["effect_id"],
+                "effect_id":      tier["effect_id"],
                 "recipient_type": tier["recipient_type"],
-                "tier_name": tier["tier_name"],
+                "tier_name":      tier["tier_name"],
             },
             "horizon_data": horizon_data,
             "total_per_1m": total_per_1m,
@@ -212,12 +203,11 @@ def run_fund_and_extract(fund_key, n_samples=1000000, n_batches = 10, verbose=Tr
     """Run Monte Carlo sampling for one fund, return horizon data + summary."""
     profile = get_fund_profile(fund_key)
     budget = profile["budget"]
-    adj = profile["adjustment_factor"]
 
     if verbose:
         print(f"\n{'=' * 60}")
         print(f"Running MC: {profile['display_name']}")
-        print(f"  Budget: ${budget / 1e6:.1f}M  |  Adjustment: {adj:.3f}")
+        print(f"  Budget: ${budget / 1e6:.1f}M  |  Counterfactual: sampled per draw")
         print(f"  Samples: {n_samples:,}  |  Seed: {seed}")
         print(f"{'=' * 60}")
 
@@ -271,12 +261,13 @@ def run_fund_and_extract(fund_key, n_samples=1000000, n_batches = 10, verbose=Tr
 
     all_period_keys = SHORT_PERIOD_KEYS + ["after_500_plus"]
 
+    # counterfactual_factor is applied per-sample inside run_monte_carlo.
     horizon_data = {}
     for pk in all_period_keys:
-        per_1m = horizon_raw[pk] * adj / budget * 1e6
+        per_1m = horizon_raw[pk] / budget * 1e6
         horizon_data[pk] = compute_risk_profiles(per_1m)
 
-    total_per_1m = total_raw * adj / budget * 1e6
+    total_per_1m = total_raw / budget * 1e6
     total_profiles = compute_risk_profiles(total_per_1m)
     summary = {
         "n_samples": n_batches * batch_size,
@@ -296,7 +287,7 @@ def run_fund_and_extract(fund_key, n_samples=1000000, n_batches = 10, verbose=Tr
               f"wlu high={total_profiles['wlu - high']:.4g}  "
               f"ambiguity={total_profiles['ambiguity']:.4g}")
 
-    sub_ext_rows = _compute_sub_extinction_rows(profile, n_samples=n_samples, verbose=verbose)
+    sub_ext_rows = _compute_sub_extinction_rows(profile, n_samples=n_samples, verbose=verbose, seed=seed)
 
     return {
         "profile": profile,
@@ -658,6 +649,9 @@ def main():
     print("=" * 70)
     print("RP CSV EXPORT — ALL FUNDS (MONTE CARLO)")
     print("=" * 70)
+
+    print("\nRefreshing param_percentiles.csv...")
+    write_param_percentiles()
 
     fund_results = []
     for fk in FUND_KEYS:

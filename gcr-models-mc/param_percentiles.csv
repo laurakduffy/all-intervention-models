@@ -1,0 +1,40 @@
+section,param,dist,note,p0.1,p1,p5,p10,p25,p50,p75,p90,p95,p99,p99.9,mean
+World priors,r_inf,loguniform,,6.864e-08,7.337e-08,1.002e-07,1.476e-07,4.615e-07,3.165e-06,2.150e-05,6.838e-05,1.001e-04,1.360e-04,1.457e-04,1.913e-05
+World priors,year_risk_1pct_max,lognormal,,16.22,21.21,30.39,37.23,52.55,77.4,114,161,197.2,282.5,371.4,90.68
+World priors,year_max_risk,lognormal,,4.883,7.151,10,11.92,16.08,22.32,31.01,41.69,49.72,68.61,90.92,25.08
+World priors,p_digital_minds,beta,,9.998e-04,0.003857,0.009995,0.01555,0.02931,0.0528,0.08588,0.1237,0.15,0.2066,0.2812,0.06288
+World priors,digital_minds,bernoulli_from,Bernoulli(p=p_digital_minds),,,,,,,,,,,,
+World priors,carrying_capacity_multiplier | digital_minds=True,lognormal,,9.795,14.29,20.05,23.92,32.19,44.7,62.27,83.94,100.2,140.4,204.8,50.46
+World priors,carrying_capacity_multiplier | digital_minds=False,lognormal,,1.111,1.163,1.259,1.323,1.439,1.582,1.741,1.898,2,2.202,2.46,1.6
+World priors,rate_growth,lognormal,,0.005025,0.005247,0.00605,0.006885,0.009019,0.01263,0.01798,0.02464,0.02967,0.04026,0.04822,0.01451
+World priors,p_cubic_growth,beta,,0.001481,0.004103,0.01018,0.01559,0.02924,0.05269,0.08536,0.1235,0.1501,0.2052,0.268,0.06266
+World priors,cubic_growth,bernoulli_from,Bernoulli(p=p_cubic_growth),,,,,,,,,,,,
+World priors,T_c,lognormal,,54.92,72.85,100.3,119.9,160.8,223.4,311.7,418.8,498.8,702.8,1009,252.2
+World priors,s,loguniform,,6.865e-06,7.352e-06,9.993e-06,1.464e-05,4.638e-05,3.176e-04,0.002157,0.006816,0.01001,0.01359,0.01458,0.001912
+World priors,cause_fraction_bio,dirichlet_component,,1.058e-21,7.025e-15,3.197e-10,3.148e-08,1.398e-05,0.001419,0.02242,0.09522,0.1696,0.3516,0.5693,0.02996
+World priors,cause_fraction_nuclear,dirichlet_component,,1.673e-21,6.805e-15,2.881e-10,3.110e-08,1.348e-05,0.001391,0.02245,0.09516,0.1698,0.3517,0.5623,0.02994
+World priors,cause_fraction_ai,dirichlet_component,,0.2817,0.4626,0.637,0.7278,0.8565,0.9486,0.9882,0.9982,0.9995,1,1,0.9002
+World priors,cause_fraction_other,dirichlet_component,,1.767e-16,1.391e-11,4.376e-08,1.444e-06,1.410e-04,0.004667,0.03915,0.1275,0.2085,0.395,0.6054,0.03991
+World priors,initial_value,uniform,,7.989e+09,7.991e+09,8.000e+09,8.011e+09,8.044e+09,8.100e+09,8.156e+09,8.189e+09,8.200e+09,8.209e+09,8.211e+09,8.100e+09
+World priors,harm_multiplier,uniform,,0.4454,0.4558,0.5001,0.5566,0.7226,1.001,1.279,1.444,1.5,1.544,1.554,1.001
+Shared cross-fund,cumulative_risk_100_yrs,beta,,0.009128,0.02458,0.04967,0.0697,0.1143,0.1802,0.2624,0.3467,0.4013,0.5028,0.6173,0.1968
+Shared cross-fund,persistence_effect,lognormal,,1.103,1.588,2.545,3.337,5.231,8.678,14.42,22.82,29.88,49.23,81.75,11.48
+Rel risk reduction per $10M,sentinel_rel_per_10m,loguniform,,1.557e-04,1.629e-04,1.993e-04,2.575e-04,5.559e-04,0.001996,0.007206,0.01552,0.02003,0.02456,0.0257,0.005024
+Rel risk reduction per $10M,nuclear_rel_per_10m,loguniform,,1.556e-04,1.629e-04,2.005e-04,2.590e-04,5.601e-04,0.002006,0.007193,0.01552,0.02003,0.02455,0.0257,0.005024
+Rel risk reduction per $10M,ai_rel_per_10m,loguniform,,3.892e-05,4.080e-05,5.006e-05,6.443e-05,1.388e-04,5.018e-04,0.001799,0.003875,0.005004,0.006131,0.006422,0.001256
+Counterfactual factor,sentinel_counterfactual,beta,,0.5563,0.6503,0.7305,0.77,0.8301,0.8861,0.9292,0.9578,0.9701,0.9859,0.9949,0.8728
+Counterfactual factor,nuclear_counterfactual,beta,,0.4951,0.5915,0.6801,0.7249,0.7929,0.858,0.9101,0.9446,0.96,0.9803,0.9924,0.8442
+Counterfactual factor,ai_counterfactual,beta,,0.2978,0.3996,0.5003,0.554,0.6418,0.7331,0.8122,0.871,0.9001,0.942,0.9714,0.7209
+Year effect starts,sentinel_year_effect_starts,lognormal,,0.739,1.067,1.504,1.807,2.463,3.468,4.891,6.672,8.039,11.32,16.2,3.951
+Year effect starts,nuclear_year_effect_starts,lognormal,,0.6683,1.018,1.507,1.861,2.637,3.879,5.727,8.12,10.02,14.89,22.77,4.584
+Year effect starts,ai_year_effect_starts,lognormal,,0.5301,0.6906,1.019,1.273,1.855,2.831,4.337,6.351,7.976,12.19,19.16,3.455
+Sub-extinction: 10-year probability,sentinel_p10yr_100m_1b,beta,,0.001103,0.002568,0.004965,0.006764,0.01077,0.01679,0.02479,0.03378,0.03999,0.05334,0.07097,0.0189
+Sub-extinction: 10-year probability,sentinel_p10yr_10m_100m,beta,,0.1336,0.1663,0.1998,0.219,0.2531,0.2932,0.3358,0.3756,0.3999,0.4465,0.499,0.2957
+Sub-extinction: 10-year probability,sentinel_p10yr_1b_8b,beta,,1.144e-04,3.927e-04,9.999e-04,0.001533,0.002858,0.005126,0.008373,0.01223,0.01501,0.0212,0.02915,0.006184
+Sub-extinction: 10-year probability,nuclear_p10yr_100m_1b,beta,,3.558e-04,9.634e-04,0.002001,0.002831,0.004753,0.007789,0.01195,0.01669,0.01999,0.02717,0.03692,0.008978
+Sub-extinction: 10-year probability,nuclear_p10yr_10m_100m,beta,,8.608e-04,0.002339,0.004958,0.007065,0.01193,0.01959,0.03001,0.04173,0.05014,0.06791,0.09082,0.02251
+Sub-extinction: 10-year probability,nuclear_p10yr_1b_8b,beta,,2.021e-04,5.029e-04,0.001003,0.001389,0.002266,0.003625,0.005451,0.007541,0.008983,0.0122,0.01671,0.004134
+Sub-extinction: 10-year probability,ai_p10yr_100m_1b,beta,,4.258e-04,0.001336,0.003,0.004411,0.007697,0.01304,0.0204,0.02899,0.03494,0.04827,0.06495,0.01523
+Sub-extinction: 10-year probability,ai_p10yr_10m_100m,beta,,0.005834,0.01466,0.02988,0.04154,0.06779,0.1075,0.1586,0.2134,0.2501,0.3238,0.4154,0.1194
+Sub-extinction: 10-year probability,ai_p10yr_1b_8b,beta,,1.449e-04,4.362e-04,0.001002,0.001474,0.00258,0.004398,0.006936,0.009887,0.01198,0.01666,0.02323,0.005177
+Sub-extinction: discount factors,sentinel_discount_10m_100m,beta,,0.05251,0.06815,0.1041,0.1317,0.1893,0.2678,0.3589,0.4467,0.5005,0.5992,0.6999,0.2807

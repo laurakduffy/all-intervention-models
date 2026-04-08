@@ -16,6 +16,7 @@ import squigglepy as sq
 import matplotlib.pyplot as plt
 import os
 from scipy.stats import genextreme as gev
+from scipy.optimize import fsolve
 
 from risk_profiles import compute_risk_profiles, RISK_PROFILES
 
@@ -24,18 +25,53 @@ from risk_profiles import compute_risk_profiles, RISK_PROFILES
 
 N_SAMPLES = 10000
 
-## put distribution here
-effects_distribution_dict = {
-    'YLDs_averted': {'shape': -0.2964, 
-                     'location': 1111,
-                     'scale': 595.9,},
-    'life_years_saved': {'shape': -0.2971, 
-                     'location': 12030,
-                     'scale': 6450,}, 
-    'income_doublings': {'shape': -0.297, 
-                     'location': 11260,
-                     'scale': 6039,}
+
+# Cost-effectiveness percentiles per $1M (10th, 50th, 90th).
+percentile_inputs = {
+    'YLDs_averted':     {'p10': 671,   'p50': 1342,  'p90': 3018},
+    'life_years_saved': {'p10': 7263,  'p50': 14525, 'p90': 32682},
+    'income_doublings': {'p10': 9810,  'p50': 19621, 'p90': 44146},
 }
+
+def fit_gev_from_percentiles(percentiles_dict):
+    """
+    Fit GEV distribution parameters from 10th, 50th, and 90th percentiles.
+
+    Args:
+        percentiles_dict: dict mapping effect_type to {'p10': val, 'p50': val, 'p90': val}
+
+    Returns:
+        dict mapping effect_type to {'shape': val, 'location': val, 'scale': val}
+    """
+    result = {}
+    for effect_type, pcts in percentiles_dict.items():
+        p10, p50, p90 = pcts['p10'], pcts['p50'], pcts['p90']
+
+        def equations(params):
+            shape, loc, scale = params
+            if scale <= 0:
+                return [1e10, 1e10, 1e10]
+            return [
+                gev.ppf(0.10, shape, loc=loc, scale=scale) - p10,
+                gev.ppf(0.50, shape, loc=loc, scale=scale) - p50,
+                gev.ppf(0.90, shape, loc=loc, scale=scale) - p90,
+            ]
+
+        shape0 = -0.3
+        loc0 = p50
+        scale0 = (p90 - p10) / 4
+
+        params, _, ier, msg = fsolve(equations, [shape0, loc0, scale0], full_output=True)
+        if ier != 1:
+            raise ValueError(f"GEV fitting failed for {effect_type}: {msg}")
+
+        shape, loc, scale = params
+        result[effect_type] = {'shape': shape, 'location': loc, 'scale': scale}
+
+    return result
+
+
+effects_distribution_dict = fit_gev_from_percentiles(percentile_inputs)
 
 temporal_breakdown_by_type_dict = {
     'YLDs_averted': 

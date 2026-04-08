@@ -15,10 +15,33 @@ import numpy as np
 
 from gcr_model import M, _solve_r_max
 from param_distributions import (
+    AI_BUDGET,
+    AI_COUNTERFACTUAL_DIST,
+    AI_HARM_ZERO_POSITIVE_DIST,
+    AI_P10YR_100M_1B_DIST,
+    AI_P10YR_10M_100M_DIST,
+    AI_P10YR_1B_8B_DIST,
     AI_REL_REDUCTION_PER_10M_DIST,
+    AI_YEAR_EFFECT_STARTS_DIST,
+    DISCOUNT_NEAR_FULL_DIST,
+    NUCLEAR_BUDGET,
+    NUCLEAR_COUNTERFACTUAL_DIST,
+    NUCLEAR_HARM_ZERO_POSITIVE_DIST,
+    NUCLEAR_P10YR_100M_1B_DIST,
+    NUCLEAR_P10YR_10M_100M_DIST,
+    NUCLEAR_P10YR_1B_8B_DIST,
     NUCLEAR_REL_REDUCTION_PER_10M_DIST,
+    NUCLEAR_YEAR_EFFECT_STARTS_DIST,
     PERSISTENCE_EFFECT_DIST,
+    SENTINEL_BUDGET,
+    SENTINEL_COUNTERFACTUAL_DIST,
+    SENTINEL_DISCOUNT_10M_100M_DIST,
+    SENTINEL_HARM_ZERO_POSITIVE_DIST,
+    SENTINEL_P10YR_100M_1B_DIST,
+    SENTINEL_P10YR_10M_100M_DIST,
+    SENTINEL_P10YR_1B_8B_DIST,
     SENTINEL_REL_REDUCTION_PER_10M_DIST,
+    SENTINEL_YEAR_EFFECT_STARTS_DIST,
     TOTAL_XRISK_100YR_DIST,
     WORLD_PRIOR_DISTRIBUTIONS,
 )
@@ -44,75 +67,62 @@ def _r_max_from_cumulative_risk(
 
 
 # ---------------------------------------------------------------------------
-# Cause-specific risk fractions (share of total x-risk per cause).
+# Cause-specific risk fractions — now a shared Dirichlet prior.
 # ---------------------------------------------------------------------------
-_AI_CAUSE_FRACTION      = 0.9
-_NUCLEAR_CAUSE_FRACTION = 0.03
-_BIO_CAUSE_FRACTION     = 0.03
+# Each fund's fixed_params carries a "cause_fraction_key" string that tells
+# run_monte_carlo which Dirichlet component to alias as cause_fraction.
+# The Dirichlet spec lives in WORLD_PRIOR_DISTRIBUTIONS["cause_fractions"]
+# and is automatically included via **WORLD_PRIOR_DISTRIBUTIONS below.
 
-_SENTINEL_BUDGET = 7.2 * M
-_NUCLEAR_BUDGET  = 5.7 * M
-_AI_BUDGET       = 70  * M
+_SENTINEL_BUDGET = SENTINEL_BUDGET
+_NUCLEAR_BUDGET  = NUCLEAR_BUDGET
+_AI_BUDGET       = AI_BUDGET
 
-_INITIAL_WORLD_VALUE = 8e9
 _TIME_HORIZON = 1e14
 _PERIODS_VALUE = [0, 5, 10, 20, 100, 500]
 
 
 def _scale_rel_risk_dist(per_10m_dist, budget):
-    """Scale a per-$10M lognormal CI spec to the actual fund budget.
+    """Scale a per-$10M CI spec to the actual fund budget.
 
-    Multiplies both CI bounds by (budget / $10M), which is exact for
-    lognormal because the scale parameter shifts linearly in log-space.
+    Multiplies ci_90 bounds (and bounds, if present) by (budget / $10M).
+    Preserves the original dist type (lognormal, loguniform, etc.).
     """
-    lo, hi = per_10m_dist["ci_90"]
     scale = budget / (10 * M)
-    return {"dist": "lognormal", "ci_90": [lo * scale, hi * scale]}
+    scaled = dict(per_10m_dist)
+    lo, hi = per_10m_dist["ci_90"]
+    scaled["ci_90"] = [lo * scale, hi * scale]
+    if "bounds" in per_10m_dist:
+        b_lo, b_hi = per_10m_dist["bounds"]
+        scaled["bounds"] = [
+            b_lo * scale if b_lo is not None else None,
+            b_hi * scale if b_hi is not None else None,
+        ]
+    return scaled
 
 
 _SENTINEL_REL_RISK_DIST = _scale_rel_risk_dist(SENTINEL_REL_REDUCTION_PER_10M_DIST, _SENTINEL_BUDGET)
 _NUCLEAR_REL_RISK_DIST  = _scale_rel_risk_dist(NUCLEAR_REL_REDUCTION_PER_10M_DIST,  _NUCLEAR_BUDGET)
 _AI_REL_RISK_DIST       = _scale_rel_risk_dist(AI_REL_REDUCTION_PER_10M_DIST,       _AI_BUDGET)
 
-# Sub-extinction tiers still use the old discrete format (unchanged from gcr-models).
-# They are processed by _compute_sub_extinction_rows in export_rp_csv.py,
-# which has its own stratified sampling logic independent of run_monte_carlo.
-_SENTINEL_REL_RISK_REDUCTION_DISCRETE = {
-    "values": [rel * (_SENTINEL_BUDGET / (10 * M)) for rel in [0.002/10, 0.002, 0.002*10]],
-    "p": [0.25, 0.60, 0.15],
-}
-_NUCLEAR_REL_RISK_REDUCTION_DISCRETE = {
-    "values": [rel * (_NUCLEAR_BUDGET / (10 * M)) for rel in [0.002/10, 0.002, 0.002*10]],
-    "p": [0.25, 0.60, 0.15],
-}
-_AI_REL_RISK_REDUCTION_DISCRETE = {
-    "values": [rel * (_AI_BUDGET / (10 * M)) for rel in [v / 4 for v in [0.002/10, 0.002, 0.002*10]]],
-    "p": [0.25, 0.60, 0.15],
-}
-_PERSISTENCE_DISCRETE = {"values": [2.5, 10, 22.5, 30], "p": [0.25, 0.3, 0.15, 0.30]}
-
-
 FUND_PROFILES = {
     "sentinel": {
         "display_name": "Sentinel Bio",
         "budget": _SENTINEL_BUDGET,
-        "counterfactual_factor": 0.80 * 1.0 + 0.15 * 0.5 + 0.05 * 0.0,  # 0.875
-        "p_harm": 0.05,
-        "p_zero": 0.50,
-        "harm_multiplier": 1.0,
         "param_specs": {
             **WORLD_PRIOR_DISTRIBUTIONS,
             "cumulative_risk_100_yrs": TOTAL_XRISK_100YR_DIST,
             "rel_risk_reduction": _SENTINEL_REL_RISK_DIST,
             "persistence_effect": PERSISTENCE_EFFECT_DIST,
+            "counterfactual_factor": SENTINEL_COUNTERFACTUAL_DIST,
+            "harm_zero_positive": SENTINEL_HARM_ZERO_POSITIVE_DIST,
+            "year_effect_starts": SENTINEL_YEAR_EFFECT_STARTS_DIST,
         },
         "fixed_params": {
             "budget": _SENTINEL_BUDGET,
             "periods_value": _PERIODS_VALUE,
             "T_h": _TIME_HORIZON,
-            "year_effect_starts": (3 + 4) / 2,
-            "initial_value": _INITIAL_WORLD_VALUE,
-            "cause_fraction": _BIO_CAUSE_FRACTION,
+            "cause_fraction_key": "cause_fraction_bio",
         },
         "export": {
             "project_id": "sentinel_bio",
@@ -127,11 +137,9 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_100m_1b",
                 "near_term_xrisk": False,
                 "recipient_type": "human_life_years",
-                "p_10yr": 0.02,
+                "p_10yr_dist": SENTINEL_P10YR_100M_1B_DIST,
                 "expected_deaths": 316e6,
-                "discount": 1.0,
-                "sweep_rel_rr": _SENTINEL_REL_RISK_REDUCTION_DISCRETE,
-                "sweep_persistence": _PERSISTENCE_DISCRETE,
+                "discount_dist": DISCOUNT_NEAR_FULL_DIST,
             },
             {
                 "tier_name": "10M-100M deaths",
@@ -139,11 +147,9 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_10m_100m",
                 "near_term_xrisk": False,
                 "recipient_type": "human_life_years",
-                "p_10yr": 0.30,
+                "p_10yr_dist": SENTINEL_P10YR_10M_100M_DIST,
                 "expected_deaths": 31.6e6,
-                "discount": 0.3,
-                "sweep_rel_rr": _SENTINEL_REL_RISK_REDUCTION_DISCRETE,
-                "sweep_persistence": _PERSISTENCE_DISCRETE,
+                "discount_dist": SENTINEL_DISCOUNT_10M_100M_DIST,
             },
             {
                 "tier_name": "1B-8B deaths",
@@ -151,11 +157,9 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_1b_8b",
                 "near_term_xrisk": False,
                 "recipient_type": "human_life_years",
-                "p_10yr": 0.005,
+                "p_10yr_dist": SENTINEL_P10YR_1B_8B_DIST,
                 "expected_deaths": 2.83e9,
-                "discount": 1.0,
-                "sweep_rel_rr": _SENTINEL_REL_RISK_REDUCTION_DISCRETE,
-                "sweep_persistence": _PERSISTENCE_DISCRETE,
+                "discount_dist": DISCOUNT_NEAR_FULL_DIST,
             },
         ],
     },
@@ -163,23 +167,20 @@ FUND_PROFILES = {
     "longview_nuclear": {
         "display_name": "Longview Philanthropy Nuclear Weapons Policy Fund",
         "budget": _NUCLEAR_BUDGET,
-        "counterfactual_factor": 0.80 * 1.0 + 0.10 * 0.5 + 0.10 * 0.0,  # 0.85
-        "p_harm": 0.05,
-        "p_zero": 0.50,
-        "harm_multiplier": 1.0,
         "param_specs": {
             **WORLD_PRIOR_DISTRIBUTIONS,
             "cumulative_risk_100_yrs": TOTAL_XRISK_100YR_DIST,
             "rel_risk_reduction": _NUCLEAR_REL_RISK_DIST,
             "persistence_effect": PERSISTENCE_EFFECT_DIST,
+            "counterfactual_factor": NUCLEAR_COUNTERFACTUAL_DIST,
+            "harm_zero_positive": NUCLEAR_HARM_ZERO_POSITIVE_DIST,
+            "year_effect_starts": NUCLEAR_YEAR_EFFECT_STARTS_DIST,
         },
         "fixed_params": {
             "budget": _NUCLEAR_BUDGET,
             "periods_value": _PERIODS_VALUE,
             "T_h": _TIME_HORIZON,
-            "year_effect_starts": 4,
-            "initial_value": _INITIAL_WORLD_VALUE,
-            "cause_fraction": _NUCLEAR_CAUSE_FRACTION,
+            "cause_fraction_key": "cause_fraction_nuclear",
         },
         "export": {
             "project_id": "longview_nuclear",
@@ -194,11 +195,9 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_100m_1b",
                 "near_term_xrisk": False,
                 "recipient_type": "human_life_years",
-                "p_10yr": 1 - 0.98 ** (10 / 30),
+                "p_10yr_dist": NUCLEAR_P10YR_100M_1B_DIST,
                 "expected_deaths": 316e6,
-                "discount": 1.0,
-                "sweep_rel_rr": _NUCLEAR_REL_RISK_REDUCTION_DISCRETE,
-                "sweep_persistence": _PERSISTENCE_DISCRETE,
+                "discount_dist": DISCOUNT_NEAR_FULL_DIST,
             },
             {
                 "tier_name": "10M-100M deaths",
@@ -206,11 +205,9 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_10m_100m",
                 "near_term_xrisk": False,
                 "recipient_type": "human_life_years",
-                "p_10yr": 1 - 0.90 ** (10 / 30),
+                "p_10yr_dist": NUCLEAR_P10YR_10M_100M_DIST,
                 "expected_deaths": 31.6e6,
-                "discount": 1.0,
-                "sweep_rel_rr": _NUCLEAR_REL_RISK_REDUCTION_DISCRETE,
-                "sweep_persistence": _PERSISTENCE_DISCRETE,
+                "discount_dist": DISCOUNT_NEAR_FULL_DIST,
             },
             {
                 "tier_name": "1B-8B deaths",
@@ -218,11 +215,9 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_1b_8b",
                 "near_term_xrisk": False,
                 "recipient_type": "human_life_years",
-                "p_10yr": 1 - (1 - 0.01) ** (10 / 30),
+                "p_10yr_dist": NUCLEAR_P10YR_1B_8B_DIST,
                 "expected_deaths": 2.83e9,
-                "discount": 1.0,
-                "sweep_rel_rr": _NUCLEAR_REL_RISK_REDUCTION_DISCRETE,
-                "sweep_persistence": _PERSISTENCE_DISCRETE,
+                "discount_dist": DISCOUNT_NEAR_FULL_DIST,
             },
         ],
     },
@@ -230,23 +225,20 @@ FUND_PROFILES = {
     "longview_ai": {
         "display_name": "Longview Philanthropy AI Program",
         "budget": _AI_BUDGET,
-        "counterfactual_factor": 0.60 * 1.0 + 0.25 * 0.5 + 0.15 * 0.0,  # 0.725
-        "p_harm": 0.15,
-        "p_zero": 0.50,
-        "harm_multiplier": 1.0,
         "param_specs": {
             **WORLD_PRIOR_DISTRIBUTIONS,
             "cumulative_risk_100_yrs": TOTAL_XRISK_100YR_DIST,
             "rel_risk_reduction": _AI_REL_RISK_DIST,
             "persistence_effect": PERSISTENCE_EFFECT_DIST,
+            "counterfactual_factor": AI_COUNTERFACTUAL_DIST,
+            "harm_zero_positive": AI_HARM_ZERO_POSITIVE_DIST,
+            "year_effect_starts": AI_YEAR_EFFECT_STARTS_DIST,
         },
         "fixed_params": {
             "budget": _AI_BUDGET,
             "periods_value": _PERIODS_VALUE,
             "T_h": _TIME_HORIZON,
-            "year_effect_starts": 3,
-            "initial_value": _INITIAL_WORLD_VALUE,
-            "cause_fraction": _AI_CAUSE_FRACTION,
+            "cause_fraction_key": "cause_fraction_ai",
         },
         "export": {
             "project_id": "longview_ai",
@@ -261,11 +253,9 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_100m_1b",
                 "near_term_xrisk": True,
                 "recipient_type": "human_life_years",
-                "p_10yr": (0.02 * (1 - 0.98 ** (10 / 30))) ** 0.5,
+                "p_10yr_dist": AI_P10YR_100M_1B_DIST,
                 "expected_deaths": 316e6,
-                "discount": 1.0,
-                "sweep_rel_rr": _AI_REL_RISK_REDUCTION_DISCRETE,
-                "sweep_persistence": _PERSISTENCE_DISCRETE,
+                "discount_dist": DISCOUNT_NEAR_FULL_DIST,
             },
             {
                 "tier_name": "10M-100M deaths",
@@ -273,11 +263,9 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_10m_100m",
                 "near_term_xrisk": True,
                 "recipient_type": "human_life_years",
-                "p_10yr": (0.3 * (1 - 0.90 ** (10 / 30))) ** 0.5,
+                "p_10yr_dist": AI_P10YR_10M_100M_DIST,
                 "expected_deaths": 31.6e6,
-                "discount": 1.0,
-                "sweep_rel_rr": _AI_REL_RISK_REDUCTION_DISCRETE,
-                "sweep_persistence": _PERSISTENCE_DISCRETE,
+                "discount_dist": DISCOUNT_NEAR_FULL_DIST,
             },
             {
                 "tier_name": "1B-8B deaths",
@@ -285,11 +273,9 @@ FUND_PROFILES = {
                 "effect_id": "effect_human_lives_sub_ext_1b_8b",
                 "near_term_xrisk": True,
                 "recipient_type": "human_life_years",
-                "p_10yr": (0.005 * (1 - (1 - 0.01) ** (10 / 30))) ** 0.5,
+                "p_10yr_dist": AI_P10YR_1B_8B_DIST,
                 "expected_deaths": 2.83e9,
-                "discount": 1.0,
-                "sweep_rel_rr": _AI_REL_RISK_REDUCTION_DISCRETE,
-                "sweep_persistence": _PERSISTENCE_DISCRETE,
+                "discount_dist": DISCOUNT_NEAR_FULL_DIST,
             },
         ],
     },
@@ -308,7 +294,6 @@ def get_fund_profile(fund_key):
 
     profile = deepcopy(FUND_PROFILES[key])
     profile["fund_key"] = key
-    profile["adjustment_factor"] = profile["counterfactual_factor"]
     return profile
 
 

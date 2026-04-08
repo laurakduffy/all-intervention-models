@@ -3,7 +3,7 @@
 Simple runner for GCR fund analysis.
 
 Usage:
-    python run_analysis.py                    # Run all funds, 100k samples
+    python run_analysis.py                    # Run all funds, 1M samples (default)
     python run_analysis.py -n 10000           # Quick test with 10k samples
     python run_analysis.py -o results.csv     # Custom output filename
 """
@@ -25,8 +25,8 @@ def main():
     parser.add_argument(
         "-n", "--n-samples",
         type=int,
-        default=100000,
-        help="Number of Monte Carlo samples per fund (default: 100000)"
+        default=None,
+        help="Number of Monte Carlo samples per fund (default: 1000000)"
     )
     parser.add_argument(
         "-q", "--quiet",
@@ -52,18 +52,23 @@ def main():
     print("="*70)
     print(f"GCR FUND ANALYSIS")
     print("="*70)
+    n_samples_display = args.n_samples if args.n_samples is not None else 1000000
     print(f"Funds: {', '.join(fund_keys)}")
-    print(f"Samples per fund: {args.n_samples:,}")
+    print(f"Samples per fund: {n_samples_display:,}")
     print(f"Output: {args.output}")
     print("="*70 + "\n")
-    
+
     # Run analysis
+    kwargs = {}
+    if args.n_samples is not None:
+        kwargs["n_samples"] = args.n_samples
+
     results = []
     for fund_key in fund_keys:
         result = run_fund_and_extract(
-            fund_key, 
-            n_samples=args.n_samples, 
-            verbose=verbose
+            fund_key,
+            verbose=verbose,
+            **kwargs,
         )
         results.append(result)
         
@@ -85,7 +90,7 @@ def main():
     print("="*70)
     print(f"Results saved to: {args.output}")
     print(f"Total funds analyzed: {len(results)}")
-    print(f"Samples per fund: {args.n_samples:,}")
+    print(f"Samples per fund: {n_samples_display:,}")
 
 
 if __name__ == "__main__":

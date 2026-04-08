@@ -8,9 +8,11 @@ Cost-effectiveness models for four intervention areas used by Rethink Priorities
 All-intervention-models/
 ├── gw-models/          # GiveWell global health portfolio
 ├── gcr-models/         # Global catastrophic risk funds (Sentinel Bio, Longview Nuclear/AI)
+├── gcr-models-mc/      # MC rewrite of GCR model (batched, LHS-stratified sampling)
 ├── aw-models/          # Animal welfare funds (EA AWF, Navigation Fund cage-free & general)
 ├── leaf-models/        # LEAF longevity research fund
 ├── run_all.py          # Runs all models in sequence and combines outputs
+├── run_gcr_dmr_sensitivity.py  # Runs combine_data.py for all four GCR DMR scenarios
 └── combine_data.py     # Merges all model outputs into output_data_{scenario}.json
 ```
 
@@ -29,7 +31,7 @@ Estimates the cost-effectiveness of GiveWell's grant portfolio in terms of **lif
 
 ---
 
-### GCR (`gcr-models/`)
+### GCR (`gcr-models/` and `gcr-models-mc/`)
 
 Estimates the expected value of reducing existential and catastrophic risk, based on [Tarsney (2020)](https://doi.org/10.1017/S0953820820000060). Models three funds:
 
@@ -41,12 +43,16 @@ Estimates the expected value of reducing existential and catastrophic risk, base
 
 - Models a Gaussian "Time of Perils" risk trajectory plus long-run residual risk
 - Integrates a logistic civilizational value trajectory, optionally extended with cubic stellar expansion
-- Runs 100,000-sample stratified Monte Carlo over world priors (total x-risk, risk timing, growth trajectory) and fund-specific intervention effect sizes
+- Runs stratified Monte Carlo over world priors (total x-risk, risk timing, growth trajectory) and fund-specific intervention effect sizes
 - Applies counterfactual, zero-effect, and harm adjustments per fund
 - Sentinel Bio additionally models two sub-extinction tiers (recoverable catastrophes) via a simple EV formula
 
-**Entry point:** `gcr-models/export_rp_csv.py`
-**Output:** `gcr-models/gcr_output.csv`, `gcr-models/diminishing_returns/{scenario}_diminishing_returns_gcr.csv`
+Two implementations are available:
+
+- **`gcr-models/`** — original implementation. Entry point: `gcr-models/export_rp_csv.py`. Output: `gcr-models/gcr_output.csv`, `gcr-models/diminishing_returns/{scenario}_diminishing_returns_gcr.csv`
+- **`gcr-models-mc/`** — rewritten MC version with hybrid LHS + discrete-strata sampling, batched runs across multiple seeds for variance reduction, and 1M-sample default. Entry point: `gcr-models-mc/export_rp_csv.py`. Output: `gcr-models-mc/rp_output.csv`
+
+`run_all.py` and `run_gcr_dmr_sensitivity.py` both accept a `--gcr-model` flag to select which implementation to use (default: `gcr-models`).
 
 ---
 
@@ -104,7 +110,7 @@ GiveWell, GCR, and LEAF use all six periods. The AW model uses only the first fo
 |---|---|
 | `neutral` | Risk-neutral expected value (mean) |
 | `upside` | Clip at p99 — values above the 99th percentile are set to p99 |
-| `downside` | Loss aversion (λ=2.5) relative to the median |
+| `downside` | Loss aversion (λ=5.0) relative to zero |
 | `combined` | Percentile-based weight decay (97.5–99.9%) plus loss aversion |
 | `wlu - low` | Weighted Linear Utility, concavity c=0.01 |
 | `wlu - moderate` | Weighted Linear Utility, concavity c=0.05 |
@@ -122,10 +128,10 @@ Piecewise linear interpolation between analyst-specified anchor points, with 1/x
 `combine_data.py` reads the CSVs from all models and merges them into `output_data_{scenario}.json` for use by downstream tools. It maps each model's column naming conventions to a unified structure and assembles the 6×9 values matrices and diminishing returns arrays per fund.
 
 ```bash
-python combine_data.py [--gcr-dmr-scenario {optimistic,pessimistic,median,fund_estimated}]
+python combine_data.py [--gcr-dmr-scenario {optimistic,pessimistic,median,fund_estimated}] [--gcr-model {gcr-models,gcr-models-mc}]
 ```
 
-The `--gcr-dmr-scenario` flag selects which GCR diminishing returns curve to use (default: `median`). The four options correspond to the files in `gcr-models/diminishing_returns/`.
+The `--gcr-dmr-scenario` flag selects which GCR diminishing returns curve to use (default: `median`). The `--gcr-model` flag selects which GCR implementation to read outputs from (default: `gcr-models`).
 
 **Output:** `output_data_{scenario}.json`, `all_diminishing_returns_{scenario}.csv`, `all_risk_adjusted.csv`
 
@@ -136,10 +142,19 @@ The `--gcr-dmr-scenario` flag selects which GCR diminishing returns curve to use
 ### Run everything at once (recommended)
 
 ```bash
-python run_all.py [--gcr-dmr-scenario {optimistic,pessimistic,median,fund_estimated}]
+python run_all.py [--gcr-dmr-scenario {optimistic,pessimistic,median,fund_estimated}] [--gcr-model {gcr-models,gcr-models-mc}] [--n-samples N] [--n-batches N]
 ```
 
-This runs all pipelines in sequence and finishes by combining outputs. Any failure aborts the rest. The `--gcr-dmr-scenario` flag is passed through to `combine_data.py` (default: `median`).
+This runs all pipelines in sequence and finishes by combining outputs. Any failure aborts the rest. Key flags:
+- `--gcr-dmr-scenario` — passed through to `combine_data.py` (default: `median`)
+- `--gcr-model` — which GCR implementation to run and read from (default: `gcr-models`)
+- `--n-samples` / `--n-batches` — passed to GCR `export_rp_csv.py` (defaults: 1,000,000 / 10)
+
+To run `combine_data.py` for all four DMR scenarios at once:
+
+```bash
+python run_gcr_dmr_sensitivity.py [--gcr-model {gcr-models,gcr-models-mc}]
+```
 
 ### Run models individually
 
@@ -156,8 +171,10 @@ python gw-models/gw_cea_modeling.py
 # Step 4 — LEAF
 python leaf-models/leaf_cea_model.py
 
-# Step 5 — GCR
-cd gcr-models && python export_rp_csv.py --n-samples 100000
+# Step 5 — GCR (original)
+cd gcr-models && python export_rp_csv.py
+# or MC version (1M samples by default):
+cd gcr-models-mc && python export_rp_csv.py
 
 # Step 6 — Combine (--gcr-dmr-scenario defaults to median)
 python combine_data.py --gcr-dmr-scenario median

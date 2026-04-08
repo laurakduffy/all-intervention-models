@@ -19,7 +19,7 @@ from risk_profiles import compute_risk_profiles, RISK_PROFILES
 # some calculations in this file were done in this Google Sheets spreadsheet: 
 # https://docs.google.com/spreadsheets/d/1cKN0tWL-76SmElE5N4F7xaySzUQ_bU24ZbN64ObUIRw/edit?usp=sharing
 
-UNITS_VALUE_PER_M_PER_X_CASH = 3280 # calculated offline
+UNITS_VALUE_PER_M_PER_X_CASH = 3356 # calculated offline
 N_SAMPLES = 10000
 LIFE_YEARS_PER_LIFE = 60 # assumed for the average life saved by GW
 
@@ -60,7 +60,7 @@ def sample_units_value_per_m():
     return sample_units_value_per_M
 
 sample_units_value_per_M = sample_units_value_per_m()
-summarize_array(sample_units_value_per_M)
+print("Units value per $1M: {}".format(summarize_array(sample_units_value_per_M)))
 
 ## Estimate the percent of GW's effect that is in the form of life-years saved, YLDs averted, and income doublings.
 
@@ -120,9 +120,15 @@ def get_sample_units_value_by_type(sample_units_value_per_M, weighted_average_pe
     })
     if to_print: 
         print("\nSample effect by type (units value per $1M):")
-        print('YLDs_averted avg: {}'.format(np.mean(sample_effect_by_type['YLDs_averted'])))
-        print('lives_saved avg: {}'.format(np.mean(sample_effect_by_type['lives_saved'])))
-        print('income_doublings avg: {}'.format(np.mean(sample_effect_by_type['income_doublings'])))
+        print('YLDs_averted avg (90% CI): {} ({}, {})'.format(np.mean(sample_effect_by_type['YLDs_averted']), \
+                                                            np.percentile(sample_effect_by_type['YLDs_averted'], 5), \
+                                                            np.percentile(sample_effect_by_type['YLDs_averted'], 95)))
+        print('lives_saved avg (90% CI): {} ({}, {})'.format(np.mean(sample_effect_by_type['lives_saved']), \
+                                                             np.percentile(sample_effect_by_type['lives_saved'], 5), \
+                                                             np.percentile(sample_effect_by_type['lives_saved'], 95)))
+        print('income_doublings avg (90% CI): {}, ({}, {})'.format(np.mean(sample_effect_by_type['income_doublings']), \
+                                                                np.percentile(sample_effect_by_type['income_doublings'], 5), \
+                                                                np.percentile(sample_effect_by_type['income_doublings'], 95)))
 
     return sample_effect_by_type
 
@@ -134,15 +140,17 @@ def get_distribution_effect_per_M(sample_effect_by_type, to_print=False):
     if to_print:
         print("\nDistribution of effect per $1M by type (after applying GW moral weights):")
         for effect_type in ['YLDs_averted', 'lives_saved', 'income_doublings']:
-            print('{} avg: {}'.format(effect_type, np.mean(distribution_effect_per_M[effect_type])))
+            print('{} avg (90% CI): {} ({}, {})'.format(effect_type, np.mean(distribution_effect_per_M[effect_type]),\
+                                                        np.percentile(distribution_effect_per_M[effect_type], 5), \
+                                                        np.percentile(distribution_effect_per_M[effect_type], 95)))
 
     return distribution_effect_per_M
 
 temporal_breakdown_by_type_dict = {
     'YLDs_averted': 
-        {'0-5 years': 0.900, '5-10 years': 0.070, '10-20 years': 0.025, '20-100 years': 0.005, '100-500 years': 0, '500+ years': 0},
+        {'0-5 years': 0.800, '5-10 years': 0.05, '10-20 years': 0.05, '20-100 years': 0.10, '100-500 years': 0, '500+ years': 0},
     'lives_saved': 
-        {'0-5 years': 0.900, '5-10 years': 0.070, '10-20 years': 0.025, '20-100 years': 0.005, '100-500 years': 0, '500+ years': 0},
+        {'0-5 years': 0.0833, '5-10 years': 0.0833, '10-20 years': 0.1667, '20-100 years': 0.6667, '100-500 years': 0, '500+ years': 0},
     'income_doublings': 
         {'0-5 years': 0.180, '5-10 years': 0.014, '10-20 years': 0.125, '20-100 years': 0.681, '100-500 years': 0, '500+ years': 0},
 }
@@ -161,11 +169,18 @@ def get_effect_per_M_by_time(distribution_effect_by_type, temporal_breakdown_by_
 
     return effect_per_M_by_time
 
-def convert_lives_saved_to_life_years_saved(effect_per_M_by_time):
+def convert_lives_saved_to_life_years_saved(effect_per_M_by_time, to_print=True):
     effect_per_M_by_time['life_years_saved'] = {}
+    total_ylls = 0
     for time_horizon in ['0-5 years', '5-10 years', '10-20 years', '20-100 years', '100-500 years', '500+ years']:
-        effect_per_M_by_time['life_years_saved'][time_horizon] = effect_per_M_by_time['lives_saved'][time_horizon] * LIFE_YEARS_PER_LIFE
+        ylls_period_t = effect_per_M_by_time['lives_saved'][time_horizon] * LIFE_YEARS_PER_LIFE
+        effect_per_M_by_time['life_years_saved'][time_horizon] = ylls_period_t 
+        total_ylls += ylls_period_t
     del effect_per_M_by_time['lives_saved']
+
+    if to_print:
+        print("Total YLLs averted, mean (90% CI): {} ({}, {})".format(np.mean(total_ylls), np.percentile(total_ylls, 5), np.percentile(total_ylls, 95)))
+
     return effect_per_M_by_time
 
 def create_summary_statistics(effect_per_M_by_time):
@@ -311,7 +326,7 @@ def main():
     effect_per_M_by_time = get_effect_per_M_by_time(
         distribution_effect_by_type, temporal_breakdown_by_type_dict, to_print=True)
 
-    effect_per_M_by_time = convert_lives_saved_to_life_years_saved(effect_per_M_by_time)
+    effect_per_M_by_time = convert_lives_saved_to_life_years_saved(effect_per_M_by_time, to_print=True)
 
     # Create summary statistics (original code)
     print("\n3. Creating summary statistics...")

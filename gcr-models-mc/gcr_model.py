@@ -477,7 +477,9 @@ _BOOL_PARAMS = {"cubic_growth"}
 _SCALAR_PARAMS = {"budget", "r_g", "d_g", "d_s"}
 
 # Keys that are internal to the sampler and not GCRParams fields.
-_INTERNAL_KEYS = {"p_digital_minds", "digital_minds", "carrying_capacity_multiplier"}
+_INTERNAL_KEYS = {"p_digital_minds", "digital_minds", "carrying_capacity_multiplier",
+                  "counterfactual_factor", "harm_multiplier",
+                  "p_harm", "p_zero", "p_positive"}
 
 # Valid GCRParams field names — used to safely filter param_arrays before passing
 # to GCRParams(**kwargs).  Computed once at import time.
@@ -538,16 +540,73 @@ def _solve_beta_params(ci_90, mean=None):
     return a0, b0  # fallback
 
 
-def _ppf(spec, u):
-    """Apply the inverse CDF of a continuous dist spec to uniform quantiles u.
+def _loguniform_range(ci_90):
+    """Return (a, b): the actual log10 range for a loguniform whose 5th/95th
+    percentiles (in original space) are ci_90 = [lo, hi]."""
+    lo, hi = ci_90
+    log10_lo, log10_hi = np.log10(lo), np.log10(hi)
+    a = (0.95 * log10_lo - 0.05 * log10_hi) / 0.90
+    b = (0.95 * log10_hi - 0.05 * log10_lo) / 0.90
+    return a, b
 
-    Supported dist types: lognormal, beta, normal, uniform.
-    (Dirichlet is multivariate and is handled separately by _dirichlet_lhs.)
+
+def _cdf(spec, x):
+    """CDF of a continuous dist spec (excluding bounds) evaluated at x.
+
+    Supported: lognormal, loguniform, beta, normal, uniform.
     """
     dist = spec["dist"]
     if dist == "lognormal":
         mu_log, sigma_log = _lognormal_mu_sigma(spec["ci_90"])
+        return lognorm.cdf(x, s=sigma_log, scale=np.exp(mu_log))
+    if dist == "loguniform":
+        a, b = _loguniform_range(spec["ci_90"])
+        return np.clip((np.log10(x) - a) / (b - a), 0.0, 1.0)
+    if dist == "beta":
+        alpha, beta_p = _solve_beta_params(spec["ci_90"], spec.get("mean"))
+        return scipy_beta.cdf(x, alpha, beta_p)
+    if dist == "normal":
+        if "ci_90" in spec:
+            lo, hi = spec["ci_90"]
+            mean = (lo + hi) / 2.0
+            std = (hi - lo) / (2.0 * norm.ppf(0.95))
+        else:
+            mean, std = spec["mean"], spec["std"]
+        return norm.cdf(x, loc=mean, scale=std)
+    if dist == "uniform":
+        if "range" in spec:
+            lo, hi = spec["range"]
+        else:
+            lo_ci, hi_ci = spec["ci_90"]
+            lo = (0.95 * lo_ci - 0.05 * hi_ci) / 0.90
+            hi = (0.95 * hi_ci - 0.05 * lo_ci) / 0.90
+        return scipy_uniform.cdf(x, loc=lo, scale=hi - lo)
+    raise ValueError(f"_cdf: unsupported dist type '{dist}'")
+
+
+def _ppf(spec, u):
+    """Apply the inverse CDF of a continuous dist spec to uniform quantiles u.
+
+    Supported dist types: lognormal, loguniform, beta, normal, uniform.
+    (Dirichlet is multivariate and is handled separately by _dirichlet_lhs.)
+
+    If the spec contains a "bounds" key ([lo, hi], either may be None), the
+    distribution is truncated by mapping u into [CDF(lo), CDF(hi)] first.
+    """
+    bounds = spec.get("bounds")
+    if bounds is not None:
+        lo_b, hi_b = bounds
+        u_lo = float(_cdf(spec, lo_b)) if lo_b is not None else 0.0
+        u_hi = float(_cdf(spec, hi_b)) if hi_b is not None else 1.0
+        u = u_lo + np.asarray(u) * (u_hi - u_lo)
+
+    dist = spec["dist"]
+    if dist == "lognormal":
+        mu_log, sigma_log = _lognormal_mu_sigma(spec["ci_90"])
         return lognorm.ppf(u, s=sigma_log, scale=np.exp(mu_log))
+    if dist == "loguniform":
+        a, b = _loguniform_range(spec["ci_90"])
+        return 10.0 ** (a + np.asarray(u) * (b - a))
     if dist == "beta":
         alpha, beta_p = _solve_beta_params(spec["ci_90"], spec.get("mean"))
         return scipy_beta.ppf(u, alpha, beta_p)
@@ -616,7 +675,7 @@ def run_monte_carlo(
     param_specs,
     fixed_params,
     n_samples=10000,
-    N_p_strata=3,
+    N_p_strata=1,
     verbose=False,
     p_harm=0.0,
     p_zero=0.0,
@@ -664,47 +723,82 @@ def run_monte_carlo(
 
     rng = np.random.default_rng(seed)
 
-    # ── 1. Resolve discrete strata parameters ─────────────────────────────────
+    # ── 1. Detect bernoulli_from hierarchies and plain bernoullis ─────────────
+    # A "hierarchy"   = beta parent (p_key)  →  bernoulli_from child (bool_key).
+    # A "plain bern." = bernoulli with a fixed p (no parent uncertainty).
+    # Each hierarchy contributes N_p_strata × 2 dimensions to the strata grid.
+    # Each plain bernoulli contributes 2 dimensions.
 
-    cg_spec = param_specs.get("cubic_growth")
-    has_cg = cg_spec is not None and cg_spec["dist"] == "bernoulli"
-    p_cubic = cg_spec["p"] if has_cg else None
+    plain_bernoullis = {}  # bool_key → p_fixed
+    hierarchies = []       # [{bool_key, p_key, p_spec, alpha, beta_p}, ...]
 
-    p_dm_spec = param_specs.get("p_digital_minds")
-    has_dm = p_dm_spec is not None
+    for param_name, spec in param_specs.items():
+        if spec["dist"] == "bernoulli":
+            plain_bernoullis[param_name] = spec["p"]
+        elif spec["dist"] == "bernoulli_from":
+            parent_key = spec["depends_on"]
+            parent_spec = param_specs.get(parent_key)
+            if parent_spec is None or parent_spec["dist"] != "beta":
+                raise ValueError(
+                    f"bernoulli_from '{param_name}': parent '{parent_key}' "
+                    f"must be a 'beta' spec in param_specs"
+                )
+            a, b = _solve_beta_params(parent_spec["ci_90"], parent_spec.get("mean"))
+            hierarchies.append({
+                "bool_key": param_name,
+                "p_key":    parent_key,
+                "p_spec":   parent_spec,
+                "alpha":    a,
+                "beta_p":   b,
+            })
 
-    if has_dm:
-        dm_alpha, dm_beta_p = _solve_beta_params(p_dm_spec["ci_90"], p_dm_spec.get("mean"))
+    _all_bool_keys = set(plain_bernoullis) | {h["bool_key"] for h in hierarchies}
+    _all_p_keys    = {h["p_key"] for h in hierarchies}
 
     # ── 2. Build strata grid ───────────────────────────────────────────────────
-    # Each stratum is a dict with fixed discrete values and its probability weight.
-    # Grid: (cubic_growth) × (p_digital_minds quantile bin) × (digital_minds T/F)
+    # Grid = Cartesian product of:
+    #   plain bernoullis  → 2 cases each
+    #   hierarchies       → N_p_strata bins × 2 (True/False) each
+    # Each stratum is a flat dict: bool_key → T/F, p_key+"_bin" → (q_lo, q_hi),
+    # weight → float.
 
-    strata = []
+    dimensions = []  # each element = list of (partial_dict, weight) tuples
 
-    cg_cases = [(True, p_cubic), (False, 1 - p_cubic)] if has_cg else [(None, 1.0)]
+    for bool_key, p in plain_bernoullis.items():
+        dimensions.append([
+            ({bool_key: True},  p),
+            ({bool_key: False}, 1.0 - p),
+        ])
 
-    for cg_val, p_cg in cg_cases:
-        if has_dm:
-            for bin_i in range(N_p_strata):
-                q_lo = bin_i / N_p_strata
-                q_hi = (bin_i + 1) / N_p_strata
-                # Representative p for this bin: conditional mean ≈ ppf(midpoint)
-                p_rep = float(scipy_beta.ppf((q_lo + q_hi) / 2, dm_alpha, dm_beta_p))
-                for dm_val, p_dm_cond in [(True, p_rep), (False, 1.0 - p_rep)]:
-                    strata.append({
-                        "cubic_growth": cg_val,
-                        "dm_bin_range": (q_lo, q_hi),
-                        "digital_minds": dm_val,
-                        "weight": p_cg * (1.0 / N_p_strata) * p_dm_cond,
-                    })
-        else:
-            strata.append({
-                "cubic_growth": cg_val,
-                "dm_bin_range": None,
-                "digital_minds": None,
-                "weight": p_cg,
-            })
+    for h in hierarchies:
+        dim = []
+        for bin_i in range(N_p_strata):
+            q_lo = bin_i / N_p_strata
+            q_hi = (bin_i + 1) / N_p_strata
+            # Representative p: exact mean for full distribution (N=1),
+            # ppf(midpoint) approximation for sub-bins (N>1).
+            if q_lo == 0.0 and q_hi == 1.0:
+                p_rep = h["alpha"] / (h["alpha"] + h["beta_p"])
+            else:
+                p_rep = float(scipy_beta.ppf((q_lo + q_hi) / 2, h["alpha"], h["beta_p"]))
+            for bool_val, p_cond in [(True, p_rep), (False, 1.0 - p_rep)]:
+                dim.append(({
+                    h["bool_key"]:          bool_val,
+                    h["p_key"] + "_bin":    (q_lo, q_hi),
+                }, (1.0 / N_p_strata) * p_cond))
+        dimensions.append(dim)
+
+    if dimensions:
+        strata = []
+        for combo in itertools.product(*dimensions):
+            partial_dicts, weights = zip(*combo)
+            stratum: dict = {}
+            for pd in partial_dicts:
+                stratum.update(pd)
+            stratum["weight"] = float(np.prod(weights))
+            strata.append(stratum)
+    else:
+        strata = [{"weight": 1.0}]
 
     # Allocate samples proportionally to stratum weight.
     total_weight = sum(s["weight"] for s in strata)
@@ -716,30 +810,30 @@ def run_monte_carlo(
         stratum_counts[i] += 1
 
     if verbose:
-        n_strata = len(strata)
-        cg_label = f"cubic_growth(2)" if has_cg else ""
-        dm_label = f"p_digital_minds({N_p_strata} bins)×digital_minds(2)" if has_dm else ""
-        labels = " × ".join(x for x in [cg_label, dm_label] if x)
-        print(f"Hybrid MC: {n_samples:,} samples | {n_strata} strata [{labels}] | LHS within each")
+        parts = [f"{k}(2, p={p:.2f})" for k, p in plain_bernoullis.items()]
+        parts += [f"{h['p_key']}({'mean' if N_p_strata == 1 else f'{N_p_strata}bins'})×{h['bool_key']}(2)"
+                  for h in hierarchies]
+        print(f"Hybrid MC: {n_samples:,} samples | {len(strata)} strata "
+              f"[{' × '.join(parts) or 'no discrete dims'}] | LHS within each")
 
     # ── 3. Identify continuous parameters for LHS ─────────────────────────────
     # Dirichlet specs are handled separately (multivariate); their group keys
     # are skipped here and their output keys are written directly in the loop.
     dirichlet_specs = {k: spec for k, spec in param_specs.items()
                        if spec["dist"] == "dirichlet"}
-    _dirichlet_output_keys = {key for spec in dirichlet_specs.values()
-                               for key in spec["keys"]}
 
-    SKIP_KEYS = ({"cubic_growth", "p_digital_minds", "digital_minds",
-                  "carrying_capacity_multiplier"} | set(dirichlet_specs.keys()))
-    _CONTINUOUS_DISTS = {"lognormal", "beta", "normal", "uniform"}
+    conditional_specs = {k: spec for k, spec in param_specs.items()
+                         if spec["dist"] == "conditional"}
+
+    SKIP_KEYS = (
+        _all_bool_keys | _all_p_keys
+        | set(conditional_specs) | set(dirichlet_specs)
+    )
+    _CONTINUOUS_DISTS = {"lognormal", "loguniform", "beta", "normal", "uniform"}
     continuous_keys = [
         k for k, spec in param_specs.items()
         if k not in SKIP_KEYS and spec["dist"] in _CONTINUOUS_DISTS
     ]
-
-    ccm_spec = param_specs.get("carrying_capacity_multiplier")
-    has_ccm = ccm_spec is not None and ccm_spec["dist"] == "conditional"
 
     # ── 4. Sample within each stratum ─────────────────────────────────────────
     all_samples = defaultdict(list)
@@ -754,35 +848,43 @@ def run_monte_carlo(
         if n_in == 0:
             continue
 
-        # Fixed discrete values from stratum definition
-        if stratum["cubic_growth"] is not None:
-            all_samples["cubic_growth"].extend([stratum["cubic_growth"]] * n_in)
-        if stratum["digital_minds"] is not None:
-            all_samples["digital_minds"].extend([stratum["digital_minds"]] * n_in)
+        # Discrete boolean values fixed by stratum
+        for bool_key in _all_bool_keys:
+            if bool_key in stratum:
+                all_samples[bool_key].extend([stratum[bool_key]] * n_in)
 
-        # p_digital_minds: LHS within this stratum's quantile bin
-        if has_dm and stratum["dm_bin_range"] is not None:
-            q_lo, q_hi = stratum["dm_bin_range"]
-            u_dm = _lhs_quantiles_in_range(n_in, rng, q_lo, q_hi)
-            all_samples["p_digital_minds"].extend(
-                scipy_beta.ppf(u_dm, dm_alpha, dm_beta_p).tolist()
-            )
+        # Parent beta parameters: LHS within each quantile bin
+        for h in hierarchies:
+            q_lo, q_hi = stratum[h["p_key"] + "_bin"]
+            u_h = _lhs_quantiles_in_range(n_in, rng, q_lo, q_hi)
+            # Use _ppf to respect any bounds on the parent spec
+            all_samples[h["p_key"]].extend(_ppf(h["p_spec"], u_h).tolist())
 
         # Continuous parameters: independent LHS per parameter (random pairing)
         for key in continuous_keys:
             u = _lhs_quantiles(n_in, rng)
             all_samples[key].extend(_ppf(param_specs[key], u).tolist())
 
-        # Conditional: carrying_capacity_multiplier depends on digital_minds
-        if has_ccm:
-            dm_val = stratum["digital_minds"]
-            case_spec = ccm_spec["cases"][dm_val]
+        # Conditional parameters: resolved from the stratum's bool values
+        for cond_key, cond_spec in conditional_specs.items():
+            dep_key = cond_spec["depends_on"]
+            dep_val = stratum.get(dep_key)
+            if dep_val is None:
+                raise ValueError(
+                    f"conditional param '{cond_key}' depends on '{dep_key}', "
+                    f"but '{dep_key}' is not in the strata grid. "
+                    f"Ensure '{dep_key}' is a bernoulli_from parameter."
+                )
+            case_spec = cond_spec["cases"][dep_val]
             u = _lhs_quantiles(n_in, rng)
-            all_samples["carrying_capacity_multiplier"].extend(_ppf(case_spec, u).tolist())
+            all_samples[cond_key].extend(_ppf(case_spec, u).tolist())
 
         # Dirichlet: sample each group and write to its named output keys
         for dspec in dirichlet_specs.values():
-            alpha = dspec["alpha"]
+            if "alpha" in dspec:
+                alpha = np.array(dspec["alpha"], dtype=float)
+            else:
+                alpha = np.array(dspec["means"], dtype=float) * dspec["concentration"]
             keys = dspec["keys"]
             matrix = _dirichlet_lhs(alpha, n_in, rng)  # shape (n_in, k)
             for i, key in enumerate(keys):
@@ -793,13 +895,22 @@ def run_monte_carlo(
     param_arrays = {}
     for k, v in all_samples.items():
         arr = np.array(v)
-        if k in _BOOL_PARAMS or k == "digital_minds":
+        if k in _all_bool_keys:  # all bernoulli/bernoulli_from outputs → bool
             arr = arr.astype(bool)
         param_arrays[k] = arr
+
+    # ── 5.5. Alias cause_fraction from Dirichlet component ───────────────────
+    # "cause_fraction_key" in fixed_params names which Dirichlet output key
+    # (e.g. "cause_fraction_bio") to use as this fund's cause_fraction.
+    cf_key = fixed_params.get("cause_fraction_key")
+    if cf_key is not None and cf_key in param_arrays:
+        param_arrays["cause_fraction"] = param_arrays[cf_key]
 
     # ── 6. Add scalar fixed parameters ────────────────────────────────────────
     for key, val in fixed_params.items():
         if key in _SCALAR_PARAMS or key == "periods_value" or key in param_arrays:
+            continue
+        if isinstance(val, str):  # meta-params like cause_fraction_key are not model arrays
             continue
         dtype = bool if key in _BOOL_PARAMS else float
         param_arrays[key] = np.full(actual_n, val, dtype=dtype)
@@ -818,7 +929,7 @@ def run_monte_carlo(
     # _GCR_PARAMS_FIELDS acts as a safety net: any remaining unknown key
     # (e.g. a Dirichlet output key that isn't a GCRParams field) is dropped
     # rather than causing a TypeError on GCRParams(**kwargs).
-    _internal = _INTERNAL_KEYS | set(dirichlet_specs.keys())
+    _internal = _INTERNAL_KEYS | set(dirichlet_specs.keys()) | _all_p_keys
     gcr_arrays = {k: v for k, v in param_arrays.items()
                   if k not in _internal and k in _GCR_PARAMS_FIELDS}
     scalar_kwargs = {k: fixed_params[k] for k in _SCALAR_PARAMS if k in fixed_params}
@@ -833,11 +944,26 @@ def run_monte_carlo(
     model = GCRModel(params)
     results = model.run()
 
-    # ── 10. Magnitude-based harm/zero assignment within strata ────────────────
-    # Within each stratum, sort samples by |Total Value| and assign harm/zero/
-    # positive proportionally in bins of 100.  This guarantees harm samples span
-    # the same magnitude range as benefit samples across all parameter regimes.
-    if p_zero > 0 or p_harm > 0:
+    # ── 10. Harm / zero assignment ────────────────────────────────────────────
+    # If p_harm / p_zero were sampled per-sample (Dirichlet), use per-sample
+    # Bernoulli draws.  Otherwise fall back to the fixed-scalar stratum method.
+    _p_harm_arr = param_arrays.get("p_harm")
+    _p_zero_arr = param_arrays.get("p_zero")
+    _harm_mult_arr = param_arrays.get("harm_multiplier")
+
+    if _p_harm_arr is not None:
+        # Per-sample assignment: simple Bernoulli draw per sample
+        u_fx = rng.random(actual_n)
+        zero_mask = (_p_harm_arr <= u_fx) & (u_fx < _p_harm_arr + _p_zero_arr)
+        harm_mask = u_fx < _p_harm_arr
+        _hm = _harm_mult_arr if _harm_mult_arr is not None else np.full(actual_n, harm_multiplier)
+        for k, v in results["ev_by_period"].items():
+            out = np.where(zero_mask, 0.0, v)
+            out = np.where(harm_mask, -v * _hm, out)
+            results["ev_by_period"][k] = out
+    elif p_zero > 0 or p_harm > 0:
+        # Legacy: fixed scalar — magnitude-based proportional assignment within strata
+        _hm = harm_multiplier if _harm_mult_arr is None else _harm_mult_arr
         total_evs = results["ev_by_period"]["Total Value"]
         effect_assignments = np.ones(actual_n, dtype=np.int8)  # 1=positive
 
@@ -875,10 +1001,19 @@ def run_monte_carlo(
         zero_mask = effect_assignments == 0
         harm_mask = effect_assignments == 2
         for k, v in results["ev_by_period"].items():
-            adj = v.copy()
-            adj = np.where(zero_mask, 0.0, adj)
-            adj = np.where(harm_mask, -v * harm_multiplier, adj)
-            results["ev_by_period"][k] = adj
+            out = v.copy()
+            out = np.where(zero_mask, 0.0, out)
+            if _harm_mult_arr is not None:
+                out = np.where(harm_mask, -v * _harm_mult_arr, out)
+            else:
+                out = np.where(harm_mask, -v * harm_multiplier, out)
+            results["ev_by_period"][k] = out
+
+    # ── 10b. Apply per-sample counterfactual factor ───────────────────────────
+    if "counterfactual_factor" in param_arrays:
+        cf = param_arrays["counterfactual_factor"]
+        for k in results["ev_by_period"]:
+            results["ev_by_period"][k] = results["ev_by_period"][k] * cf
 
     # ── 11. Summary statistics ────────────────────────────────────────────────
     total_values = results["ev_by_period"]["Total Value"]
