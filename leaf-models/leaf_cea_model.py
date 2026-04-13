@@ -28,9 +28,9 @@ N_SAMPLES = 10000
 
 # Cost-effectiveness percentiles per $1M (10th, 50th, 90th).
 percentile_inputs = {
-    'YLDs_averted':     {'p10': 671,   'p50': 1342,  'p90': 3018},
-    'life_years_saved': {'p10': 7263,  'p50': 14525, 'p90': 32682},
-    'income_doublings': {'p10': 9810,  'p50': 19621, 'p90': 44146},
+    'YLDs_averted':     {'p10': 710,   'p50': 1420,  'p90': 3196},
+    'life_years_saved': {'p10': 7690,  'p50': 15380, 'p90': 34604},
+    'income_doublings': {'p10': 10387,  'p50': 20775, 'p90': 46743},
 }
 
 def fit_gev_from_percentiles(percentiles_dict):

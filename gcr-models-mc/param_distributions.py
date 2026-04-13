@@ -44,9 +44,17 @@ fund_profiles.py imports these specs and passes them to run_monte_carlo.
       The spec appears under any descriptive key in param_specs; that key itself
       is not a model parameter — only the "keys" entries are written to samples.
 
+  {"dist": "constant", "value": v}
+      Degenerate distribution fixed at v for every sample.  Useful for
+      pinning a probability (e.g. p_digital_minds=0) without touching model
+      code.  When used as the parent of a bernoulli_from parameter, that
+      child always takes the corresponding fixed boolean value.
+
   {"dist": "bernoulli_from", "depends_on": key}
       Bernoulli whose p is drawn from another sampled parameter (must lie
-      in [0, 1]).  Used for digital_minds, which depends on p_digital_minds.
+      in [0, 1]).  The parent may be a "beta" spec (uncertain p) or a
+      "constant" spec (fixed p).  Used for digital_minds, which depends on
+      p_digital_minds.
 
   {"dist": "conditional", "depends_on": key, "cases": {val: spec, ...}}
       Different distribution depending on the value of another parameter.
@@ -91,7 +99,7 @@ WORLD_PRIOR_DISTRIBUTIONS = {
 
     "r_inf": {
         "dist": "loguniform",
-        "ci_90": [1e-7, 1e-4],
+        "ci_90": [1e-8, 5e-5],
         "bounds": [1e-10, 1e-3],
         # Background (floor) annual extinction risk.
         # Previous discrete values: [1e-10, 1e-7, 1e-3]
@@ -107,7 +115,7 @@ WORLD_PRIOR_DISTRIBUTIONS = {
 
     "year_max_risk": {
         "dist": "lognormal",
-        "ci_90": [10, 50],
+        "ci_90": [5, 40],
         "bounds": [2, 100], 
         # Year of peak catastrophic risk.
         # Previous discrete values: [5, 15, 50]
@@ -121,10 +129,12 @@ WORLD_PRIOR_DISTRIBUTIONS = {
     #   3. carrying_capacity_multiplier (lognormal, conditional on digital_minds).
 
     "p_digital_minds": {
-        "dist": "beta",
-        "ci_90": [0.01, 0.15],
+        "dist": "constant",
+        "value": 0,
         # Prior probability that digital minds emerge this century,
         # driving a high carrying capacity.
+        # Set to 0 to disable digital-minds scenarios entirely.
+        # Change to {"dist": "beta", "ci_90": [lo, hi]} to restore uncertainty.
     },
 
     "digital_minds": {
@@ -159,8 +169,8 @@ WORLD_PRIOR_DISTRIBUTIONS = {
 
     "rate_growth": {
         "dist": "lognormal",
-        "ci_90": [0.005, 0.03],
-        "bounds": [0.005, 0.05], 
+        "ci_90": [0.005, 0.02],
+        "bounds": [0.005, 0.04], 
         # Logistic growth rate for Earth value.
         # Previous discrete values: [0.01, 0.04]
     },
@@ -190,8 +200,8 @@ WORLD_PRIOR_DISTRIBUTIONS = {
 
     "s": {
         "dist": "loguniform",
-        "ci_90": [1e-5, 1e-2],
-        "bounds": [1e-7, 1e-1], 
+        "ci_90": [4e-5, 1e-2],
+        "bounds": [1e-6, 1e-2], 
         # Speed of stellar settlement (fraction of speed of light, ly/yr).
         # Previous discrete values: [0.001, 0.01, 0.1]
         # Reduced to be more conservative
@@ -211,7 +221,7 @@ WORLD_PRIOR_DISTRIBUTIONS = {
     "cause_fractions": {
         "dist": "dirichlet",
         "means": [0.03, 0.03, 0.90, 0.04],
-        "concentration": 5,
+        "concentration": 10,
         "keys": [
             "cause_fraction_bio",
             "cause_fraction_nuclear",
@@ -244,33 +254,33 @@ PERSISTENCE_EFFECT_DIST = {
 
 
 # ---------------------------------------------------------------------------
-# Fund-specific: relative risk reduction per $10M
+# Fund-specific: relative risk reduction per $1M
 # ---------------------------------------------------------------------------
-# These are the per-$10M specs.  fund_profiles.py scales them by
-# (budget / $10M) to produce the per-fund rel_risk_reduction spec.
+# These are the per-$1M specs.  fund_profiles.py scales them by
+# (budget / $1M) to produce the per-fund rel_risk_reduction spec.
 
-SENTINEL_REL_REDUCTION_PER_10M_DIST = {
+SENTINEL_REL_REDUCTION_PER_M_DIST = {
     "dist": "loguniform",
-    "ci_90": [2e-4, 2e-2],
-    "bounds": [None, 1e-1], 
-    # Relative cause-specific risk reduction per $10M for Sentinel Bio.
-    # Previous: {values: [0.0002, 0.002, 0.02], p: [0.25, 0.60, 0.15]}
+    "ci_90": [2e-5, 2e-3],
+    "bounds": [None, 5e-3], 
+    # Relative cause-specific risk reduction per $1M for Sentinel Bio.
+    # Previous: {values: [0.0002, 0.002, 0.02], p: [0.25, 0.60, 0.15] in increments of $10M}
 }
 
-NUCLEAR_REL_REDUCTION_PER_10M_DIST = {
+NUCLEAR_REL_REDUCTION_PER_M_DIST = {
     "dist": "loguniform",
-    "ci_90": [2e-4, 2e-2],
-    "bounds": [None, 1e-1], 
-    # Same as Sentinel per $10M.
+    "ci_90": [2e-5, 2e-3],
+    "bounds": [None, 5e-3], 
+    # Same as Sentinel per $1M.
     # Previous: same as Sentinel.
 }
 
-AI_REL_REDUCTION_PER_10M_DIST = {
+AI_REL_REDUCTION_PER_M_DIST = {
     "dist": "loguniform",
-    "ci_90": [5e-5, 5e-3],
-    "bounds": [None, 1e-2], 
-    # 1/4 of nuclear per $10M (Longview AI is ~10× more funded).
-    # Previous: 1/4 × nuclear values: [0.00005, 0.0005, 0.005]
+    "ci_90": [5e-6, 5e-4],
+    "bounds": [None, 1e-3], 
+    # 1/4 of nuclear per $1M (Longview AI is ~10× more funded).
+    # Previous: 1/4 × nuclear values: [0.00005, 0.0005, 0.005] per $10M
 }
 
 
@@ -545,10 +555,10 @@ def write_param_percentiles():
             "cumulative_risk_100_yrs": TOTAL_XRISK_100YR_DIST,
             "persistence_effect":      PERSISTENCE_EFFECT_DIST,
         }),
-        ("Rel risk reduction per $10M", {
-            "sentinel_rel_per_10m": SENTINEL_REL_REDUCTION_PER_10M_DIST,
-            "nuclear_rel_per_10m":  NUCLEAR_REL_REDUCTION_PER_10M_DIST,
-            "ai_rel_per_10m":       AI_REL_REDUCTION_PER_10M_DIST,
+        ("Rel risk reduction per $1M", {
+            "sentinel_rel_per_1m": SENTINEL_REL_REDUCTION_PER_M_DIST,
+            "nuclear_rel_per_1m":  NUCLEAR_REL_REDUCTION_PER_M_DIST,
+            "ai_rel_per_1m":       AI_REL_REDUCTION_PER_M_DIST,
         }),
         ("Counterfactual factor", {
             "sentinel_counterfactual": SENTINEL_COUNTERFACTUAL_DIST,
@@ -574,6 +584,15 @@ def write_param_percentiles():
         ("Sub-extinction: discount factors", {
             "sentinel_discount_10m_100m":    SENTINEL_DISCOUNT_10M_100M_DIST,
         }),
+        ("Harm/zero/positive: Sentinel Bio", {
+            "sentinel_harm_zero_positive": SENTINEL_HARM_ZERO_POSITIVE_DIST,
+        }),
+        ("Harm/zero/positive: Longview Nuclear", {
+            "nuclear_harm_zero_positive": NUCLEAR_HARM_ZERO_POSITIVE_DIST,
+        }),
+        ("Harm/zero/positive: Longview AI", {
+            "ai_harm_zero_positive": AI_HARM_ZERO_POSITIVE_DIST,
+        }),
     ]
 
     CONTINUOUS_DISTS = {"lognormal", "loguniform", "beta", "normal", "uniform"}
@@ -588,6 +607,14 @@ def write_param_percentiles():
             for col, p in zip(PCT_COLS, PCTS):
                 row[col] = _fmt(np.percentile(samples, p))
             row["mean"] = _fmt(float(np.mean(samples)))
+            return [row]
+
+        elif d == "constant":
+            v = spec["value"]
+            row = {**base, "note": f"constant={v}"}
+            for col in PCT_COLS:
+                row[col] = _fmt(v)
+            row["mean"] = _fmt(v)
             return [row]
 
         elif d == "bernoulli":

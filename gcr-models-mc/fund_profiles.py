@@ -21,7 +21,7 @@ from param_distributions import (
     AI_P10YR_100M_1B_DIST,
     AI_P10YR_10M_100M_DIST,
     AI_P10YR_1B_8B_DIST,
-    AI_REL_REDUCTION_PER_10M_DIST,
+    AI_REL_REDUCTION_PER_M_DIST,
     AI_YEAR_EFFECT_STARTS_DIST,
     DISCOUNT_NEAR_FULL_DIST,
     NUCLEAR_BUDGET,
@@ -30,7 +30,7 @@ from param_distributions import (
     NUCLEAR_P10YR_100M_1B_DIST,
     NUCLEAR_P10YR_10M_100M_DIST,
     NUCLEAR_P10YR_1B_8B_DIST,
-    NUCLEAR_REL_REDUCTION_PER_10M_DIST,
+    NUCLEAR_REL_REDUCTION_PER_M_DIST,
     NUCLEAR_YEAR_EFFECT_STARTS_DIST,
     PERSISTENCE_EFFECT_DIST,
     SENTINEL_BUDGET,
@@ -40,7 +40,7 @@ from param_distributions import (
     SENTINEL_P10YR_100M_1B_DIST,
     SENTINEL_P10YR_10M_100M_DIST,
     SENTINEL_P10YR_1B_8B_DIST,
-    SENTINEL_REL_REDUCTION_PER_10M_DIST,
+    SENTINEL_REL_REDUCTION_PER_M_DIST,
     SENTINEL_YEAR_EFFECT_STARTS_DIST,
     TOTAL_XRISK_100YR_DIST,
     WORLD_PRIOR_DISTRIBUTIONS,
@@ -82,18 +82,18 @@ _TIME_HORIZON = 1e14
 _PERIODS_VALUE = [0, 5, 10, 20, 100, 500]
 
 
-def _scale_rel_risk_dist(per_10m_dist, budget):
-    """Scale a per-$10M CI spec to the actual fund budget.
+def _scale_rel_risk_dist(per_1m_dist, budget):
+    """Scale a per-$1M CI spec to the actual fund budget.
 
-    Multiplies ci_90 bounds (and bounds, if present) by (budget / $10M).
+    Multiplies ci_90 bounds (and bounds, if present) by (budget / $1M).
     Preserves the original dist type (lognormal, loguniform, etc.).
     """
-    scale = budget / (10 * M)
-    scaled = dict(per_10m_dist)
-    lo, hi = per_10m_dist["ci_90"]
+    scale = budget / (1 * M)
+    scaled = dict(per_1m_dist)
+    lo, hi = per_1m_dist["ci_90"]
     scaled["ci_90"] = [lo * scale, hi * scale]
-    if "bounds" in per_10m_dist:
-        b_lo, b_hi = per_10m_dist["bounds"]
+    if "bounds" in per_1m_dist:
+        b_lo, b_hi = per_1m_dist["bounds"]
         scaled["bounds"] = [
             b_lo * scale if b_lo is not None else None,
             b_hi * scale if b_hi is not None else None,
@@ -101,9 +101,9 @@ def _scale_rel_risk_dist(per_10m_dist, budget):
     return scaled
 
 
-_SENTINEL_REL_RISK_DIST = _scale_rel_risk_dist(SENTINEL_REL_REDUCTION_PER_10M_DIST, _SENTINEL_BUDGET)
-_NUCLEAR_REL_RISK_DIST  = _scale_rel_risk_dist(NUCLEAR_REL_REDUCTION_PER_10M_DIST,  _NUCLEAR_BUDGET)
-_AI_REL_RISK_DIST       = _scale_rel_risk_dist(AI_REL_REDUCTION_PER_10M_DIST,       _AI_BUDGET)
+_SENTINEL_REL_RISK_DIST = _scale_rel_risk_dist(SENTINEL_REL_REDUCTION_PER_M_DIST, _SENTINEL_BUDGET)
+_NUCLEAR_REL_RISK_DIST  = _scale_rel_risk_dist(NUCLEAR_REL_REDUCTION_PER_M_DIST,  _NUCLEAR_BUDGET)
+_AI_REL_RISK_DIST       = _scale_rel_risk_dist(AI_REL_REDUCTION_PER_M_DIST,       _AI_BUDGET)
 
 FUND_PROFILES = {
     "sentinel": {

@@ -21,7 +21,7 @@ _parser.add_argument(
     help='Number of batches to split GCR runs into'
 )
 _parser.add_argument(
-    '--gcr-model', default='gcr-models', choices=['gcr-models', 'gcr-models-mc'],
+    '--gcr-model', default='gcr-models-mc', choices=['gcr-models', 'gcr-models-mc'],
     help='GCR model folder to run and read outputs from (default: gcr-models)'
 )
 _args = _parser.parse_args()

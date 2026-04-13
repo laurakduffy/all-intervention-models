@@ -19,7 +19,7 @@ Run:
 """
 
 import numpy as np
-import yaml
+import yaml 
 import csv
 import os
 from scipy import stats
@@ -169,7 +169,7 @@ def create_histogram(arr, title, output_path, bins=100):
 # Direct override from Laura Duffy's estimates - updated 3/2/2026 by Laura Duffy 
 # suffering_years_per_$1000 from https://docs.google.com/document/d/1Kuu08LFYpjG-wGzt7_QmBLkFTzsv4FaQHYRQKn9p3A8/edit?usp=sharing
 
-chicken_dalys_per_1000 = sample_lognorm_ci(177, 3600, lclip=50, rclip=10000, credibility=90) # mean around 1200 DALYs per $1000
+chicken_dalys_per_1000 = sample_lognorm_ci(611, 5500, lclip=50, rclip=12000, credibility=90) # mean around 1200 DALYs per $1000
 chicken_sy_per_1000 = chicken_dalys_per_1000 
 chicken_stats = pcts(chicken_sy_per_1000)
 

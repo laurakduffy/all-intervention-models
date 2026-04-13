@@ -7,8 +7,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-BUDGET_M = 897 # in Millions
-INCREMENT_SIZE = 10 # in Millions
+BUDGET_M = 897 
+INCREMENT_SIZE = 2 # in Millions
 
 _GCR_DMR_SCENARIOS = ['optimistic', 'pessimistic', 'median', 'fund_estimated']
 
@@ -30,11 +30,11 @@ else:
     GCR_MODEL = 'gcr-models'
 
 # combine the diminishing returns data from the three models into a single dataframe
-gw_diminishing_returns = pd.read_csv('gw-models/givewell_diminishing_returns.csv')
-ea_awf_diminishing_returns = pd.read_csv('aw-models/data/inputs/ea_awf_diminishing_returns.csv')
-navigation_fund_diminishing_returns = pd.read_csv('aw-models/data/inputs/navigation_fund_diminishing_returns.csv')
-gcr_diminishing_returns = pd.read_csv('{}/diminishing_returns/{}_diminishing_returns_gcr.csv'.format(GCR_MODEL, GCR_DMR_SCENARIO))
-leaf_diminishing_returns = pd.read_csv('leaf-models/leaf_diminishing_returns.csv')
+gw_diminishing_returns = pd.read_csv('gw-models/givewell_diminishing_returns_{}M.csv'.format(INCREMENT_SIZE))
+ea_awf_diminishing_returns = pd.read_csv('aw-models/data/inputs/ea_awf_diminishing_returns_{}M.csv'.format(INCREMENT_SIZE))
+navigation_fund_diminishing_returns = pd.read_csv('aw-models/data/inputs/navigation_fund_diminishing_returns_{}M.csv'.format(INCREMENT_SIZE))
+gcr_diminishing_returns = pd.read_csv('{}/diminishing_returns/{}_diminishing_returns_gcr_{}M.csv'.format(GCR_MODEL, GCR_DMR_SCENARIO, INCREMENT_SIZE))
+leaf_diminishing_returns = pd.read_csv('leaf-models/leaf_diminishing_returns_{}M.csv'.format(INCREMENT_SIZE))
 
 FUND_NAME_MAP = {
     'sentinel': 'sentinel_bio',
@@ -51,7 +51,7 @@ PROJECT_METADATA = {
     'givewell': {'name': 'GiveWell', 'color': "#85E4FF"},
     "sentinel_bio": {"name": "Biorisk fund (Sentinel bio)", "color": "#85E4FF"},
     "longview_nuclear": {"name": "Nuclear fund (Longview)", "color": "#85E4FF" },
-    "longview_ai": {"name": "AI fund (Longview)", "color":"#e74c3c"},
+    "longview_ai": {"name": "AI fund (Longview)", "color":"#85E4FF"},
     "ea_awf": {"name": "EA Animal Welfare Fund", "color": "#85E4FF"},
     "navigation_fund_general": {"name": "The Navigation Fund - General", "color": "#85E4FF"},
     "navigation_fund_cagefree": {"name": "The Navigation Fund - Cage-Free", "color": "#85E4FF"},
@@ -237,7 +237,7 @@ final_json_structure = {
   "incrementSize": INCREMENT_SIZE,
   "moralWeightKeys": [
     {"key": "human_life_years", "label": "Human Life-Years"},
-    {"key": "human_ylds", "label": "Human YLDs"},
+    {"key": "human_ylds", "label": "Human Years Lived with Disability"},
     {"key": "human_income_doublings", "label": "Human Income Doublings"},
     {"key": "chickens_birds", "label": "Chickens/Birds"},
     {"key": "fish", "label": "Fish"},

@@ -1,6 +1,6 @@
 # AW Fund Marginal CE: Assumptions Register
 
-Generated: 2026-04-03
+Generated: 2026-04-13
 
 ## Fund Configuration
 
@@ -18,7 +18,7 @@ Generated: 2026-04-03
 
 | Intervention | Species | Recipient | Split | Persistence | Neutral aDALYs/$1M |
 |---|---|---|---|---|---|
-| chicken_corporate_campaigns | chicken | birds | 100% | 15yr | 1,205,171 |
+| chicken_corporate_campaigns | chicken | birds | 100% | 15yr | 2,286,491 |
 
 ## Key Sources
 

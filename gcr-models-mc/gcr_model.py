@@ -31,7 +31,7 @@ class GCRParams:
     """
 
     n_sims: int = 3
-    budget: float = 10 * M
+    budget: float
     periods_value: list = field(default_factory=lambda: [0, 5, 10, 20, 100, 500])
 
     # Risk trajectory
@@ -247,35 +247,41 @@ class GCRModel:
 
     def get_conditional_future_value_stars_to_Ts2(self):
         p = self.p
-        return self.a1 / p.r_inf * (
-            6 / p.r_inf**3
-            - np.exp(-p.r_inf * (self.T_s - p.T_c))
-            * (
-                (self.T_s - p.T_c) ** 3
-                + 3 / p.r_inf * (self.T_s - p.T_c) ** 2
-                + 6 / p.r_inf**2 * (self.T_s - p.T_c)
-                + 6 / p.r_inf**3
-            )
+        B = self.T_s - p.T_c
+        lam = p.r_inf
+        u_B = lam * B
+        # When u_B << 1 the bracket (6 - exp(-u_B)*(u_B^3+3u_B^2+6u_B+6)) loses all
+        # significant digits because both terms are ~6.  Taylor series avoids this:
+        #   6 - g(u) = u^4/4 - u^5/5 + u^6/12 + O(u^7)
+        # so (a1/lam^4)*(6 - g(u_B)) = a1*B^4*(1/4 - lam*B/5 + lam^2*B^2/12)
+        taylor = self.a1 * B**4 * (0.25 - lam * B / 5.0 + lam**2 * B**2 / 12.0)
+        exact = self.a1 / lam * (
+            6 / lam**3
+            - np.exp(-u_B)
+            * (B**3 + 3 / lam * B**2 + 6 / lam**2 * B + 6 / lam**3)
         )
+        return np.where(u_B < 0.0008, taylor, exact)
 
     def get_conditional_future_value_stars_to_Ts3(self, n_years):
         p = self.p
-        return self.a1 / p.r_inf * (
-            np.exp(-p.r_inf * (n_years - p.T_c))
-            * (
-                (n_years - p.T_c) ** 3
-                + 3 / p.r_inf * (n_years - p.T_c) ** 2
-                + 6 / p.r_inf**2 * (n_years - p.T_c)
-                + 6 / p.r_inf**3
-            )
-            - np.exp(-p.r_inf * (self.T_s - p.T_c))
-            * (
-                (self.T_s - p.T_c) ** 3
-                + 3 / p.r_inf * (self.T_s - p.T_c) ** 2
-                + 6 / p.r_inf**2 * (self.T_s - p.T_c)
-                + 6 / p.r_inf**3
-            )
+        A = n_years - p.T_c
+        B = self.T_s - p.T_c
+        lam = p.r_inf
+        u_A = lam * A
+        u_B = lam * B
+        # Same cancellation: g(u_A) - g(u_B) where both g values are ~6.
+        # Taylor: (a1/lam^4)*[(u_B^4-u_A^4)/4 - (u_B^5-u_A^5)/5 + (u_B^6-u_A^6)/12]
+        #       = a1*[(B^4-A^4)/4 - lam*(B^5-A^5)/5 + lam^2*(B^6-A^6)/12]
+        taylor = self.a1 * (
+            (B**4 - A**4) / 4.0
+            - lam * (B**5 - A**5) / 5.0
+            + lam**2 * (B**6 - A**6) / 12.0
         )
+        exact = self.a1 / lam * (
+            np.exp(-u_A) * (A**3 + 3 / lam * A**2 + 6 / lam**2 * A + 6 / lam**3)
+            - np.exp(-u_B) * (B**3 + 3 / lam * B**2 + 6 / lam**2 * B + 6 / lam**3)
+        )
+        return np.where(u_B < 0.0008, taylor, exact)
 
     def get_conditional_future_value_stars_to_Th3(self):
         p = self.p
@@ -738,19 +744,23 @@ def run_monte_carlo(
         elif spec["dist"] == "bernoulli_from":
             parent_key = spec["depends_on"]
             parent_spec = param_specs.get(parent_key)
-            if parent_spec is None or parent_spec["dist"] != "beta":
+            if parent_spec is None or parent_spec["dist"] not in ("beta", "constant"):
                 raise ValueError(
                     f"bernoulli_from '{param_name}': parent '{parent_key}' "
-                    f"must be a 'beta' spec in param_specs"
+                    f"must be a 'beta' or 'constant' spec in param_specs"
                 )
-            a, b = _solve_beta_params(parent_spec["ci_90"], parent_spec.get("mean"))
-            hierarchies.append({
-                "bool_key": param_name,
-                "p_key":    parent_key,
-                "p_spec":   parent_spec,
-                "alpha":    a,
-                "beta_p":   b,
-            })
+            if parent_spec["dist"] == "constant":
+                # Fixed p — treat child as a plain bernoulli; parent is constant.
+                plain_bernoullis[param_name] = float(parent_spec["value"])
+            else:
+                a, b = _solve_beta_params(parent_spec["ci_90"], parent_spec.get("mean"))
+                hierarchies.append({
+                    "bool_key": param_name,
+                    "p_key":    parent_key,
+                    "p_spec":   parent_spec,
+                    "alpha":    a,
+                    "beta_p":   b,
+                })
 
     _all_bool_keys = set(plain_bernoullis) | {h["bool_key"] for h in hierarchies}
     _all_p_keys    = {h["p_key"] for h in hierarchies}
@@ -825,9 +835,13 @@ def run_monte_carlo(
     conditional_specs = {k: spec for k, spec in param_specs.items()
                          if spec["dist"] == "conditional"}
 
+    constant_specs = {k: spec for k, spec in param_specs.items()
+                      if spec["dist"] == "constant"}
+
     SKIP_KEYS = (
         _all_bool_keys | _all_p_keys
         | set(conditional_specs) | set(dirichlet_specs)
+        | set(constant_specs)
     )
     _CONTINUOUS_DISTS = {"lognormal", "loguniform", "beta", "normal", "uniform"}
     continuous_keys = [
@@ -878,6 +892,10 @@ def run_monte_carlo(
             case_spec = cond_spec["cases"][dep_val]
             u = _lhs_quantiles(n_in, rng)
             all_samples[cond_key].extend(_ppf(case_spec, u).tolist())
+
+        # Constant parameters: fill with fixed value
+        for key, cspec in constant_specs.items():
+            all_samples[key].extend([cspec["value"]] * n_in)
 
         # Dirichlet: sample each group and write to its named output keys
         for dspec in dirichlet_specs.values():
@@ -1053,7 +1071,7 @@ def make_original_notebook_params():
     initial_value = np.array([8e9, 2e9, 5e10])
     return GCRParams(
         n_sims=3,
-        budget=10 * M,
+        budget=1 * M,
         periods_value=[0, 5, 10, 20, 100, 500],
         cumulative_risk_100_yrs=np.array([0.1, 0.05, 0.25]),
         year_max_risk=np.array([15, 10, 5]),
@@ -1066,7 +1084,7 @@ def make_original_notebook_params():
         initial_value=initial_value,
         rate_growth=np.array([0.01, 0.005, 0.02]),
         carrying_capacity=np.array([2, 1.5, 5]) * initial_value,
-        cubic_growth=np.array([False, True, True]),
+        cubic_growth=np.array([False, False, True]),
         T_c=np.array([300, 1000, 600]),
         s=np.array([0.01, 0.001, 0.1]),
     )

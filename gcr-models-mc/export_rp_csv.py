@@ -1,7 +1,7 @@
 """Export RP-style CSV for all fund profiles.
 
 Produces an RP-format CSV with two sections:
-  1. Diminishing returns: marginal CE multiplier at $10M..$900M steps
+  1. Diminishing returns: marginal CE multiplier at $1M..$90M steps
   2. Effects at time horizon: human life years/$1M by period and risk profile
 
 All risk profiles:
@@ -232,6 +232,24 @@ def run_fund_and_extract(fund_key, n_samples=1000000, n_batches = 10, verbose=Tr
         if verbose:
             print(f"  Done: {batch_size:,} samples in {elapsed:.1f}s")
 
+        total_values_batch = results["ev_per_period"]["Total Value"]
+        per_1m_batch = total_values_batch / budget * 1e6
+        batch_mean = float(np.mean(per_1m_batch))
+        above_mean = per_1m_batch[per_1m_batch > batch_mean]
+        n_above = len(above_mean)
+        pct_above = 100.0 * n_above / len(per_1m_batch)
+        print(f"  Batch {i+1}/{n_batches}: {n_above:,}/{batch_size:,} ({pct_above:.2f}%) samples above mean ({batch_mean:.4g} life-yrs/$1M)")
+        if n_above > 0:
+            log_vals = np.log10(np.abs(above_mean[above_mean != 0]))
+            if len(log_vals) > 0:
+                floors = np.floor(log_vals).astype(int)
+                oom_counts = sorted(zip(*np.unique(floors, return_counts=True)))
+                oom_str = "  |  ".join(f"1e{oom}: {cnt}" for oom, cnt in oom_counts)
+                print(f"    OOM distribution: {oom_str}")
+        tail_pcts = [0.01, 0.1, 99.9, 99.99]
+        tail_vals = np.percentile(per_1m_batch, tail_pcts)
+        print(f"    Tails: p0.01={tail_vals[0]:.3g}  p0.1={tail_vals[1]:.3g}  p99.9={tail_vals[2]:.3g}  p99.99={tail_vals[3]:.3g}")
+
         evp = results["ev_per_period"]
         ev_dicts.append(evp)
 
@@ -423,31 +441,71 @@ def create_and_save_histograms(fund_results, output_dir, verbose=True):
     os.makedirs(output_dir, exist_ok=True)
 
     def _save_histogram(project_id, display_name, samples):
-        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
         fig.suptitle(f"{display_name}\nTotal QALYs per $1M", fontsize=13)
 
-        # Linear scale
-        axes[0].hist(samples, bins=60, alpha=0.75, color="steelblue", edgecolor="none")
+        mean_val    = float(np.mean(samples))
+        median_val  = float(np.median(samples))
+        p99_val     = float(np.percentile(samples, 99))
+        p999_val    = float(np.percentile(samples, 99.9))
+        p9999_val   = float(np.percentile(samples, 99.99))
+        p99999_val  = float(np.percentile(samples, 99.999))
+
+        # Linear scale — clip x-axis to p0.01..p99.999 so the bulk is visible;
+        # note if mean is off-chart
+        p001_val  = float(np.percentile(samples, 0.01))
+        axes[0].hist(samples, bins=60, alpha=0.75, color="steelblue", edgecolor="none",
+                     range=(p001_val, p99999_val))
         axes[0].set_xlabel("QALYs / $1M")
         axes[0].set_ylabel("Frequency")
-        axes[0].set_title("Linear scale")
-        axes[0].axvline(float(np.mean(samples)), color="red", linestyle="--", linewidth=1.2, label=f"Mean = {np.mean(samples):.3g}")
-        axes[0].axvline(float(np.median(samples)), color="orange", linestyle="--", linewidth=1.2, label=f"Median = {np.median(samples):.3g}")
+        axes[0].set_xlim(p001_val, p99999_val)
+        mean_in_range = p001_val <= mean_val <= p99999_val
+        if mean_in_range:
+            axes[0].axvline(mean_val, color="red", linestyle="--", linewidth=1.2,
+                            label=f"Mean = {mean_val:.3g}")
+        axes[0].axvline(median_val, color="orange", linestyle="--", linewidth=1.2,
+                        label=f"Median = {median_val:.3g}")
+        mean_label = f"Mean = {mean_val:.3g}" + ("" if mean_in_range else " (off-chart →)")
+        stats_text = (
+            f"{mean_label}\n"
+            f"p99    = {p99_val:.3g}\n"
+            f"p99.9  = {p999_val:.3g}\n"
+            f"p99.99 = {p9999_val:.3g}\n"
+            f"p99.999= {p99999_val:.3g}"
+        )
+        axes[0].text(0.97, 0.97, stats_text, transform=axes[0].transAxes,
+                     fontsize=8, va="top", ha="right",
+                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
         axes[0].legend(fontsize=9)
+        axes[0].set_title(f"Linear scale (p0.01–p99.999; {100*np.sum(samples<=0)/len(samples):.1f}% ≤ 0 excluded)")
 
-        # Log scale (x-axis); drop non-positive values
+        # Log scale — full positive range so extreme tail is always visible
         pos = samples[samples > 0]
         if len(pos) > 0:
-            log_bins = np.logspace(np.log10(np.percentile(pos, 1)), np.log10(np.percentile(pos, 99)), 60)
+            log_lo = np.log10(np.min(pos))
+            log_hi = np.log10(np.max(pos))
+            log_bins = np.logspace(log_lo, log_hi, 80)
             axes[1].hist(pos, bins=log_bins, alpha=0.75, color="steelblue", edgecolor="none")
             axes[1].set_xscale("log")
-            axes[1].axvline(float(np.mean(pos)), color="red", linestyle="--", linewidth=1.2, label=f"Mean = {np.mean(pos):.3g}")
-            axes[1].axvline(float(np.median(pos)), color="orange", linestyle="--", linewidth=1.2, label=f"Median = {np.median(pos):.3g}")
-            axes[1].legend(fontsize=9)
-            pct_negative = 100 * np.sum(samples <= 0) / len(samples)
-            axes[1].set_title(f"Log scale (positive values only; {pct_negative:.1f}% ≤ 0 excluded)")
+            xlo, xhi = axes[1].get_xlim()
+            # Vertical reference lines — only draw if within the plot range
+            vlines = [
+                (median_val,  "orange", f"Median={median_val:.3g}"),
+                (mean_val,    "red",    f"Mean={mean_val:.3g}"),
+                (p99_val,     "green",  f"p99={p99_val:.3g}"),
+                (p999_val,    "purple", f"p99.9={p999_val:.3g}"),
+                (p9999_val,   "brown",  f"p99.99={p9999_val:.3g}"),
+                (p99999_val,  "gray",   f"p99.999={p99999_val:.3g}"),
+            ]
+            for val, color, label in vlines:
+                if val > 0 and xlo <= val <= xhi:
+                    axes[1].axvline(val, color=color, linestyle="--", linewidth=1.2, label=label)
+            axes[1].legend(fontsize=8)
+            pct_nonpos = 100 * np.sum(samples <= 0) / len(samples)
+            axes[1].set_title(f"Log scale — full range ({pct_nonpos:.1f}% ≤ 0 excluded)")
         else:
-            axes[1].text(0.5, 0.5, "No positive values", ha="center", va="center", transform=axes[1].transAxes)
+            axes[1].text(0.5, 0.5, "No positive values", ha="center", va="center",
+                         transform=axes[1].transAxes)
             axes[1].set_title("Log scale")
         axes[1].set_xlabel("QALYs / $1M")
         axes[1].set_ylabel("Frequency")
@@ -570,37 +628,66 @@ def create_absolute_ev_histograms(fund_results, output_dir, verbose=True):
         project_id = fr["profile"]["export"]["project_id"]
         display_name = fr["profile"]["display_name"]
 
-        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
         fig.suptitle(f"{display_name}\nAbsolute EV of future with intervention (person-years)", fontsize=12)
 
-        # Linear scale
-        axes[0].hist(samples, bins=60, alpha=0.75, color="steelblue", edgecolor="none")
+        mean_val    = float(np.mean(samples))
+        median_val  = float(np.median(samples))
+        p99_val     = float(np.percentile(samples, 99))
+        p999_val    = float(np.percentile(samples, 99.9))
+        p9999_val   = float(np.percentile(samples, 99.99))
+        p99999_val  = float(np.percentile(samples, 99.999))
+        p001_val    = float(np.percentile(samples, 0.01))
+
+        # Linear scale — clip to p0.01..p99.999
+        axes[0].hist(samples, bins=60, alpha=0.75, color="steelblue", edgecolor="none",
+                     range=(p001_val, p99999_val))
         axes[0].set_xlabel("Person-years")
         axes[0].set_ylabel("Frequency")
-        axes[0].set_title("Linear scale")
-        axes[0].axvline(float(np.mean(samples)), color="red", linestyle="--", linewidth=1.2,
-                        label=f"Mean = {np.mean(samples):.3g}")
-        axes[0].axvline(float(np.median(samples)), color="orange", linestyle="--", linewidth=1.2,
-                        label=f"Median = {np.median(samples):.3g}")
+        axes[0].set_xlim(p001_val, p99999_val)
+        mean_in_range = p001_val <= mean_val <= p99999_val
+        if mean_in_range:
+            axes[0].axvline(mean_val, color="red", linestyle="--", linewidth=1.2,
+                            label=f"Mean = {mean_val:.3g}")
+        axes[0].axvline(median_val, color="orange", linestyle="--", linewidth=1.2,
+                        label=f"Median = {median_val:.3g}")
+        mean_label = f"Mean = {mean_val:.3g}" + ("" if mean_in_range else " (off-chart →)")
+        stats_text = (
+            f"{mean_label}\n"
+            f"p99    = {p99_val:.3g}\n"
+            f"p99.9  = {p999_val:.3g}\n"
+            f"p99.99 = {p9999_val:.3g}\n"
+            f"p99.999= {p99999_val:.3g}"
+        )
+        axes[0].text(0.97, 0.97, stats_text, transform=axes[0].transAxes,
+                     fontsize=8, va="top", ha="right",
+                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
         axes[0].legend(fontsize=9)
+        axes[0].set_title(f"Linear scale (p0.01–p99.999; {100*np.sum(samples<=0)/len(samples):.1f}% ≤ 0 excluded)")
 
-        # Log scale — positive values only
+        # Log scale — full positive range so extreme tail is always visible
         pos = samples[samples > 0]
         if len(pos) > 0:
-            log_bins = np.logspace(
-                np.log10(np.percentile(pos, 0.1)),
-                np.log10(np.percentile(pos, 99.9)),
-                60,
-            )
+            log_lo = np.log10(np.min(pos))
+            log_hi = np.log10(np.max(pos))
+            log_bins = np.logspace(log_lo, log_hi, 80)
             axes[1].hist(pos, bins=log_bins, alpha=0.75, color="steelblue", edgecolor="none")
             axes[1].set_xscale("log")
-            axes[1].axvline(float(np.mean(pos)), color="red", linestyle="--", linewidth=1.2,
-                            label=f"Mean = {np.mean(pos):.3g}")
-            axes[1].axvline(float(np.median(pos)), color="orange", linestyle="--", linewidth=1.2,
-                            label=f"Median = {np.median(pos):.3g}")
-            axes[1].legend(fontsize=9)
+            xlo, xhi = axes[1].get_xlim()
+            vlines = [
+                (median_val,  "orange", f"Median={median_val:.3g}"),
+                (mean_val,    "red",    f"Mean={mean_val:.3g}"),
+                (p99_val,     "green",  f"p99={p99_val:.3g}"),
+                (p999_val,    "purple", f"p99.9={p999_val:.3g}"),
+                (p9999_val,   "brown",  f"p99.99={p9999_val:.3g}"),
+                (p99999_val,  "gray",   f"p99.999={p99999_val:.3g}"),
+            ]
+            for val, color, label in vlines:
+                if val > 0 and xlo <= val <= xhi:
+                    axes[1].axvline(val, color=color, linestyle="--", linewidth=1.2, label=label)
+            axes[1].legend(fontsize=8)
             pct_nonpos = 100 * np.sum(samples <= 0) / len(samples)
-            axes[1].set_title(f"Log scale (positive only; {pct_nonpos:.1f}% ≤ 0 excluded)")
+            axes[1].set_title(f"Log scale — full range ({pct_nonpos:.1f}% ≤ 0 excluded)")
         else:
             axes[1].text(0.5, 0.5, "No positive values", ha="center", va="center",
                          transform=axes[1].transAxes)

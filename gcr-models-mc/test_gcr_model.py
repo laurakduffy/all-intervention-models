@@ -377,7 +377,7 @@ def test_conservative_bio_survival_diff_nonzero():
     silently zeroing EV for all those samples. float64 risk arrays resolve this.
 
     Uses hardcoded conservative values matching the old discrete sweep:
-      rel_risk_reduction = 0.002/10 × ($7.2M / $10M) ≈ 1.44e-4
+      rel_risk_reduction = 2e-5 × ($7.2M / $1M) ≈ 1.44e-4  (lower ci_90 of per-$1M Sentinel dist)
       cause_fraction     = 0.03  (Dirichlet mean for bio)
     """
     n = 10
